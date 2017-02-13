@@ -37,8 +37,6 @@ Setup dehydrated as per original instructions.
 Example modifications to dehydrated.conf
 
 ```
-#!shell
-
 $ cat ~/etc/dehydrated/dehydrated.conf  | grep -v -e ^# -e ^$
 CHALLENGETYPE="http-01"
 BASEDIR="/Users/user/etc/dehydrated"
@@ -56,8 +54,6 @@ $
 Edit the following variables within dehydrated-bigip
 
 ```
-#!shell
-
 export BIGIP_Addrs="192.168.1.245"
 export BIGIP_User="admin"
 export BIGIP_Passwd="admin"
@@ -73,8 +69,6 @@ Add host/domain names to %{PATH}%/dehydrated.conf
 Each line will be treated as a separate certificate; the first name is the primary certificate name, additional names will be included as SAN's.
 
 ```
-#!shell
-
 $ cat ~/etc/dehydrated/domains.txt
 localhost4.localdomain4
 localhost6.localdomain6
@@ -86,8 +80,6 @@ $
 1. Updating certificates on F5 BIGIP
 
 ```
-#!shell
-
 %{TBC}%
 ```
 
