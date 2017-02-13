@@ -1,0 +1,424 @@
+#!/bin/bash
+
+#-------------------------------------------------------
+# Variables & Constants
+#-------------------------------------------------------
+## Constants
+export BIGIP_Addrs="192.168.1.245"
+export BIGIP_User="admin"
+export BIGIP_Passwd="admin"
+export BIGIP_Partition="Common"
+export GRPNAME="certbot_validator"
+export CLIENT_SSL_DEFAULT="/Common/clientssl"
+
+## Programs
+#export CURL="/opt/vagrant/embedded/bin/curl"
+export CURL="/usr/bin/curl"
+export LOGFILE='./dehydrated-bigip.log'
+if [ -e $LOGFILE ]; then
+  echo "Removing old log file."
+  rm $LOGFILE
+fi
+
+# Initial Curl connection timeout value in seconds.
+TIMEOUT=5
+## Maximum time for an API call to return. Depending on what you are doing,
+##  this value should be quite large as some calls take a long time to
+##  complete!  Testing your script should provide you with a good ideal
+##  about what is too long.  I usually start at 120 seconds and go up from there.
+MAXTIMEOUT=120
+
+source ~/bin/F5CommonRESTAPIs.sh
+log "** Adding common iControl REST API Function **"
+
+#-----------------------------------------------------------------------
+#---------------[ iRule & Data Group Functions]-------------------------
+#-----------------------------------------------------------------------
+
+#-------------------------------------------------------
+# Function: createDataGroup()
+# Creates and 'internal' Data Group on the BIGIP.
+# $1 => name of Data Group
+# $2 => DG type:  string, ip, integer
+#-------------------------------------------------------
+createDataGroup() {
+  OUT=$(restCall "POST" "/tm/ltm/data-group/internal" "{ \"name\": \"${1}\", \"type\": \"${2}\" }")
+  log "createDataGroup(): `echo $OUT | python -mjson.tool`"
+  if [[ $(echo $OUT | jsonq '["kind"]') != "tm:ltm:data-group:internal:internalstate" ]]; then
+    echo "ERROR: Unable to create Data Group ${1}"
+    return 1
+  fi
+  return 0
+}
+
+#-------------------------------------------------------
+# Function: addToDataGroup()
+#   Adds to an existing Data Group.  This fucntion is much more complex,
+#  since you need to capture all the existing entries into an JSON array,
+#  insert the new entry, then send them all back. [Yes, it gets ugly with large lists]
+# $1 => Name of Data Group
+# $2 => Item to insert into group
+# $3 => Item value to insert into group
+#-------------------------------------------------------
+addToDataGroup() {
+  OUT=$(restCall "GET" "/tm/ltm/data-group/internal/~${BIGIP_Partition}~${1}")
+  log "addToDataGroup()[Initial GET]: `echo $OUT | python -mjson.tool`"
+  ## Grab all the current records and add the new one to the end of the JSON array.
+  if [[ $(echo $OUT | grep records) == "" ]]; then
+    # No records yet, so add the first one.
+    TT="[ { \"name\": \"${2}\", \"data\": \"${3}\" } ]"
+  else
+    TT=$(echo $OUT | python -c "import sys,json; input=json.load(sys.stdin); tt=input[\"records\"]; tt.append({ \"name\": \"${2}\", \"data\": \"${3}\" }); print json.dumps(tt)")
+  fi
+  log "addToDataGroup()[Record Insert]: `echo \"{ \"records\": ${TT} }\"`"
+  ##  Overwrite the old records list with the new one.
+  TS=$(echo "{ \"records\": ${TT} }")
+  OUT=$(restCall "PUT" "/tm/ltm/data-group/internal/~${BIGIP_Partition}~${1}" "{ \"records\": ${TT} }")
+  log "addToDataGroup()[Write Back Results]: `echo $OUT | python -mjson.tool`"
+  if [[ $(echo $OUT | jsonq '["kind"]') != "tm:ltm:data-group:internal:internalstate" ]]; then
+    echo "ERROR: Data Group records were not added correctly."
+    return 1
+  fi
+  return 0
+}
+
+#-------------------------------------------------------
+# Function: deleteFromDataGroup()
+#   Deletes an entry from an existing Data Group.  This fucntion is much more complex,
+#  since you need to capture all the existing entries into an JSON array,
+#  insert the new entry, then send them all back. [Yes, it gets ugly with large lists]
+# $1 => Name of Data Group
+# $2 => Item to delete from group
+#-------------------------------------------------------
+deleteFromDataGroup() {
+  OUT=$(restCall "GET" "/tm/ltm/data-group/internal/~${BIGIP_Partition}~${1}")
+  log "deleteFromDataGroup()[Initial GET]: `echo $OUT | python -mjson.tool`"
+  ## Grab all the current records and add the new one to the end of the JSON array.
+  if [[ $(echo $OUT | grep records) == "" ]]; then
+    # No records; re-write empty data group
+    TT=""
+  else
+    # Re-format records; removing the record identified by ${2}
+    TT=$(echo $OUT | python -c "import sys,json; input=json.load(sys.stdin); tt=input[\"records\"]; print json.dumps(tt)" | sed -E -e "s/{\"name\": \"${2}\", \"data\": \"[a-zA-Z0-9]*\"},* *//" -e "s/{\"data\": \"[a-zA-Z0-9]*\", \"name\": \"${2}\"},* *//")
+
+    log "DEBUG: echo '$OUT' | python -c 'import sys,json; input=json.load(sys.stdin); tt=input[\"records\"]; print json.dumps(tt)' | sed -E -e 's/{\"name\": \"${2}\", \"data\": \"[a-zA-Z0-9]*\"},* *//' -e 's/{\"data\": \"[a-zA-Z0-9]*\", \"name\": \"${2}\"},* *//'"
+  fi
+  log "deleteFromDataGroup()[Record Removed]: `echo \"{ \"records\": ${TT} }\"`"
+  ##  Overwrite the old records list with the new one.
+  TS=$(echo "{ \"records\": ${TT} }")
+  OUT=$(restCall "PUT" "/tm/ltm/data-group/internal/~${BIGIP_Partition}~${1}" "{ \"records\": ${TT} }")
+  log "deleteFromDataGroup()[Write Back Results]: `echo $OUT | python -mjson.tool`"
+  if [[ $(echo $OUT | jsonq '["kind"]') != "tm:ltm:data-group:internal:internalstate" ]]; then
+    echo "ERROR: Data Group records were not deleted correctly."
+    return 1
+  fi
+  return 0
+}
+
+#-------------------------------------------------------
+# Function: createCertFromUpload()
+#   Creates a certificate/key object
+# $1 => Name for certificate object
+# $2 => Uploaded file name
+#-------------------------------------------------------
+createCertFromUpload() {
+  NAME="/${BIGIP_Partition}/${1}"
+  OUT=$(restCall "POST" "/tm/sys/crypto/cert" "{ \"command\": \"install\", \"name\": \"${NAME}\", \"from-local-file\": \"/var/config/rest/downloads/${2}\" }")
+  log "createCertFromUpload()[Write Back Results]: `echo $OUT | python -mjson.tool`"
+  return 0
+}
+
+#-------------------------------------------------------
+# Function: createKeyFromUpload()
+#   Creates a certificate/key object
+# $1 => Name for certificate object
+# $2 => Uploaded file name
+#-------------------------------------------------------
+createKeyFromUpload() {
+  NAME="/${BIGIP_Partition}/${1}"
+  OUT=$(restCall "POST" "/tm/sys/crypto/key" "{ \"command\": \"install\", \"name\": \"${NAME}\", \"from-local-file\": \"/var/config/rest/downloads/${2}\", \"securityType\": \"normal\" }")
+  log "createCertFromUpload()[Write Back Results]: `echo $OUT | python -mjson.tool`"
+  return 0
+}
+
+#-------------------------------------------------------
+# Function: uploadFile()
+#   Upload file to F5 BIG-IP
+# $1 => Name of file to upload
+# $2 => Destination file name
+#-------------------------------------------------------
+uploadFile() {
+  log "uploadFile()[Upload File]: ${1}"
+
+  if [ ! -r ${1} ] ; then
+    return 1
+  fi
+
+  FILENAME=`basename ${1}`
+
+  CHUNK_SIZE=$((512 * 1024))
+
+  eval $(stat -s ${1})
+
+  FILESIZE=${st_size}
+  BYTES_START=0
+  TMP_FILE=`mktemp`
+
+  log "DEBUG: ${CHUNK_SIZE} / ${FILENAME} / ${1} / ${BYTES_START} -lt ${FILESIZE} / ${TMP_FILE} ?"
+
+  while [ ${BYTES_START} -lt ${FILESIZE} ] ; do
+      echo -n > ${TMP_FILE}
+      dd if="${1}" skip=${BYTES_START} bs=${CHUNK_SIZE} count=1 of="${TMP_FILE}"
+
+      eval $(stat -s ${TMP_FILE})
+
+      if [ $((${BYTES_START} + ${CHUNK_SIZE})) -gt ${st_size} ] ; then
+          BYTES_END=${st_size}
+      else
+          BYTES_END=$((${BYTES_START} + ${st_size}))
+      fi
+
+      OUT=$(/bin/bash -c "curl --insecure -X POST --data-binary '@${TMP_FILE}' -u '${BIGIP_User}:${BIGIP_Passwd}' -H 'Content-Type: application/octet-stream' -H 'Content-Range: ${BYTES_START}-$((${BYTES_END} - 1))/${st_size}' 'https://${BIGIP_Addrs}/mgmt/shared/file-transfer/uploads/${2}'")
+
+      if [[ $(echo -n $OUT | grep remainingByteCount) == "" ]]; then
+        log "curl --insecure -X POST --data-binary '@${TMP_FILE}' -u '${BIGIP_User}:${BIGIP_Passwd}' -H 'Content-Type: application/octet-stream' -H 'Content-Range: ${BYTES_START}-$((${BYTES_END} - 1))/${FILESIZE}' 'https://${BIGIP_Addrs}/mgmt/shared/file-transfer/uploads/${2}' == $OUT"
+      fi
+
+      BYTES_START=${BYTES_END}
+  done
+
+  rm -f ${TMP_FILE}
+
+  ##  Overwrite the old records list with the new one.
+  # OUT=$(restCall "POST" "/mgmt/shared/file-transfer/uploads/~${BIGIP_Partition}~${1}" "{ \"records\": ${TT} }")
+  log "uploadFile()[Upload results]: `echo $OUT | python -mjson.tool`"
+
+  return 0
+}
+
+#-------------------------------------------------------
+# Function: createClientSSLProfile()
+# Creates a client SSL profile on BIGIP
+# $1 => name of client SSL profile
+# $2 => parent SSL profile
+# $3 => partition
+# $4 => cert
+# $5 => key
+# $6 => chain
+# $7 => server name
+#-------------------------------------------------------
+createClientSSLProfile() {
+  OUT=$(restCall "POST" "/tm/ltm/profile/client-ssl" "{ \"name\": \"${1}\", \"partition\": \"${2}\", \"defaultsFrom\": \"${3}\", \"cert\": \"${4}\", \"key\": \"${5}\", \"chain\": \"${6}\", \"serverName\": \"${7}\" }")
+  log "createClientSSLProfile(): `echo $OUT | python -mjson.tool`"
+  if [[ $(echo $OUT | jsonq '["kind"]') != "tm:ltm:data-group:internal:internalstate" ]]; then
+    echo "ERROR: Unable to create client SSL profile ${1}"
+    return 1
+  fi
+  return 0
+}
+
+# dehydrated hooks
+
+deploy_challenge() {
+    local DOMAIN="${1}" TOKEN_FILENAME="${2}" TOKEN_VALUE="${3}"
+
+    # This hook is called once for every domain that needs to be
+    # validated, including any alternative names you may have listed.
+    #
+    # Parameters:
+    # - DOMAIN
+    #   The domain name (CN or subject alternative name) being
+    #   validated.
+    # - TOKEN_FILENAME
+    #   The name of the file containing the token to be served for HTTP
+    #   validation. Should be served by your web server as
+    #   /.well-known/acme-challenge/${TOKEN_FILENAME}.
+    # - TOKEN_VALUE
+    #   The token value that needs to be served for validation. For DNS
+    #   validation, this is what you want to put in the _acme-challenge
+    #   TXT record. For HTTP validation it is the value that is expected
+    #   be found in the $TOKEN_FILENAME file.
+
+    echo "NOTE: Deploying challenge to F5 BIG-IP (${DOMAIN}/${TOKEN_FILENAME}/${TOKEN_VALUE})"
+
+    if (! whenAvailable); then
+      echo "ERROR: BIGIP Not responding... Please check to see if it is running!"
+      return 1
+    fi
+
+    OUT=$(addToDataGroup "${GRPNAME}" "${TOKEN_FILENAME}" "${TOKEN_VALUE}")
+
+    if ! $OUT; then
+      echo "Error: Token for ${DOMAIN} was not added correctly!"
+      exit 1
+    fi
+}
+
+clean_challenge() {
+    local DOMAIN="${1}" TOKEN_FILENAME="${2}" TOKEN_VALUE="${3}"
+
+    # This hook is called after attempting to validate each domain,
+    # whether or not validation was successful. Here you can delete
+    # files or DNS records that are no longer needed.
+    #
+    # The parameters are the same as for deploy_challenge.
+
+    echo "NOTE: Removing challenge from F5 BIG-IP (${DOMAIN}/${TOKEN_FILENAME})"
+
+    if (! whenAvailable); then
+      echo "ERROR: BIGIP Not responding... Please check to see if it is running!"
+      return 1
+    fi
+
+    OUT=$(deleteFromDataGroup "${GRPNAME}" "${TOKEN_FILENAME}")
+
+    #if ! $OUT; then
+    #  echo "Error: Token for ${DOMAIN} was not added correctly!"
+    #  exit 1
+    #fi
+}
+
+deploy_cert() {
+    local DOMAIN="${1}" KEYFILE="${2}" CERTFILE="${3}" FULLCHAINFILE="${4}" CHAINFILE="${5}" TIMESTAMP="${6}"
+
+    # This hook is called once for each certificate that has been
+    # produced. Here you might, for instance, copy your new certificates
+    # to service-specific locations and reload the service.
+    #
+    # Parameters:
+    # - DOMAIN
+    #   The primary domain name, i.e. the certificate common
+    #   name (CN).
+    # - KEYFILE
+    #   The path of the file containing the private key.
+    # - CERTFILE
+    #   The path of the file containing the signed certificate.
+    # - FULLCHAINFILE
+    #   The path of the file containing the full certificate chain.
+    # - CHAINFILE
+    #   The path of the file containing the intermediate certificate(s).
+    # - TIMESTAMP
+    #   Timestamp when the specified certificate was created.
+
+    echo "NOTE: Deploying certs to F5 BIG-IP (${DOMAIN}/${KEYFILE}/${CERTFILE}/${FULLCHAINFILE}/${CHAINFILE}/${TIMESTAMP})"
+
+    if [ -r ${CERTFILE} ] ; then
+        OUT=$(uploadFile ${CERTFILE} ${DOMAIN}-${TIMESTAMP}.crt)
+        if ! $OUT; then
+          echo "Error: Certificate for ${DOMAIN} was not uploaded correctly!"
+          exit 1
+        fi
+
+        OUT=$(createCertFromUpload ${DOMAIN}-${TIMESTAMP} ${DOMAIN}-${TIMESTAMP}.crt)
+        if ! $OUT; then
+          echo "Error: Certificate for ${DOMAIN} was not created correctly!"
+          exit 1
+        fi
+    else
+        echo "Error: File ${CERTFILE} does not exist or is unreadable!"
+    fi
+
+    if [ -r ${KEYFILE} ] ; then
+        OUT=$(uploadFile ${KEYFILE} ${DOMAIN}-${TIMESTAMP}.key)
+        if ! $OUT; then
+          echo "Error: Certificate for ${DOMAIN} was not uploaded correctly!"
+        fi
+
+        OUT=$(createKeyFromUpload ${DOMAIN}-${TIMESTAMP} ${DOMAIN}-${TIMESTAMP}.key)
+        if ! $OUT; then
+          echo "Error: Certificate for ${DOMAIN} was not created correctly!"
+        fi
+    else
+        echo "Error: File ${KEYFILE} does not exist or is unreadable!"
+    fi
+
+    if [ -r ${FULLCHAINFILE} ] ; then
+        OUT=$(uploadFile ${FULLCHAINFILE} ${DOMAIN}-${TIMESTAMP}-FULLCHAIN.crt)
+        if ! $OUT; then
+          echo "Error: Certificate for ${DOMAIN} was not uploaded correctly!"
+        fi
+
+        OUT=$(createCertFromUpload ${DOMAIN}-${TIMESTAMP}-FULLCHAIN ${DOMAIN}-${TIMESTAMP}-FULLCHAIN.crt)
+        if ! $OUT; then
+          echo "Error: Certificate for ${DOMAIN} was not created correctly!"
+        fi
+    else
+        echo "Error: File ${FULLCHAINFILE} does not exist or is unreadable!"
+    fi
+
+    if [ -r ${CHAINFILE} ] ; then
+        OUT=$(uploadFile ${CHAINFILE} ${DOMAIN}-${TIMESTAMP}-CHAIN.crt)
+        if ! $OUT; then
+          echo "Error: Certificate for ${DOMAIN} was not uploaded correctly!"
+        fi
+
+        OUT=$(createCertFromUpload ${DOMAIN}-${TIMESTAMP}-CHAIN ${DOMAIN}-${TIMESTAMP}-CHAIN.crt)
+        if ! $OUT; then
+          echo "Error: Certificate for ${DOMAIN} was not created correctly!"
+        fi
+    else
+        echo "Error: File ${CHAINFILE} does not exist or is unreadable!"
+    fi
+}
+
+unchanged_cert() {
+    local DOMAIN="${1}" KEYFILE="${2}" CERTFILE="${3}" FULLCHAINFILE="${4}" CHAINFILE="${5}"
+
+    # This hook is called once for each certificate that is still
+    # valid and therefore wasn't reissued.
+    #
+    # Parameters:
+    # - DOMAIN
+    #   The primary domain name, i.e. the certificate common
+    #   name (CN).
+    # - KEYFILE
+    #   The path of the file containing the private key.
+    # - CERTFILE
+    #   The path of the file containing the signed certificate.
+    # - FULLCHAINFILE
+    #   The path of the file containing the full certificate chain.
+    # - CHAINFILE
+    #   The path of the file containing the intermediate certificate(s).
+
+    echo "NOTE: Certificate was not reissued (${DOMAIN}/${KEYFILE}/${CERTFILE}/${FULLCHAINFILE}/${CHAINFILE})"
+}
+
+invalid_challenge() {
+    local DOMAIN="${1}" RESPONSE="${2}"
+
+    # This hook is called if the challenge response has failed, so domain
+    # owners can be aware and act accordingly.
+    #
+    # Parameters:
+    # - DOMAIN
+    #   The primary domain name, i.e. the certificate common
+    #   name (CN).
+    # - RESPONSE
+    #   The response that the verification server returned
+
+    echo "ERROR: Invalid ACME challenge"
+}
+
+request_failure() {
+    local STATUSCODE="${1}" REASON="${2}" REQTYPE=${3}
+
+    # This hook is called when a HTTP request fails (e.g., when the ACME
+    # server is busy, returns an error, etc). It will be called upon any
+    # response code that does not start with '2'. Useful to alert admins
+    # about problems with requests.
+    #
+    # Parameters:
+    # - STATUSCODE
+    #   The HTML status code that originated the error.
+    # - REASON
+    #   The specified reason for the error.
+    # - REQTYPE
+    #   The kind of request that was made (GET, POST...)
+
+    echo "ERROR: ACME request failed (Status: ${STATUSCODE}, Reason: ${REASON}, Request Type: ${REQTYPE})"
+}
+
+HANDLER="$1"; shift
+"$HANDLER" "$@"
+
+exit 0
