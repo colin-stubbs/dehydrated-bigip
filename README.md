@@ -51,20 +51,37 @@ CONTACT_EMAIL=muppet@some.domain.tld
 $
 ```
 
-Edit the following variables within dehydrated-bigip
+Edit the following variables within dehydrated-bigip,
 
 ```
-export BIGIP_Addrs="192.168.1.245"
-export BIGIP_User="admin"
-export BIGIP_Passwd="admin"
-export BIGIP_Partition="Common"
-export GRPNAME="certbot_validator"
-export CLIENT_SSL_DEFAULT="/Common/clientssl"
-export CURL="/usr/bin/curl"
-export LOGFILE='./dehydrated-bigip.log'
+  export BIGIP_Addrs="192.168.1.245 192.168.1.246"
+  export BIGIP_User="admin"
+  export BIGIP_Passwd="admin"
+  export BIGIP_Partition="Common"
+  export BIGIP_Data_Group_Name="certbot_validator"
+  export BIGIP_Client_SSL_Parent="/Common/clientssl"
+  export TIMESTAMP_NAME="1"
+  export OCSP_STAPLING_PROFILE="/Common/ocsp"
+  export CURL="/usr/bin/curl"
+  export LOGFILE='./dehydrated-bigip.log'
 ```
 
-Add host/domain names to %{PATH}%/dehydrated.conf
+At present, within dehydrated-bigip direct from the git repo, the values are represented with Jinja variable bracketing and so immediately included as part of a Salt Stack state or similar.
+
+e.g.
+
+```
+  export BIGIP_Addrs_List="{{ bigip_device_list }}"
+  export BIGIP_User="{{ bigip_username }}"
+  export BIGIP_Passwd='{{ bigip_password }}'
+  export BIGIP_Partition="{{ bigip_partition }}"
+  export BIGIP_Data_Group_Name="{{ bigip_data_group }}"
+  export BIGIP_Client_SSL_Parent="{{ bigip_clientssl_parent }}"
+  export TIMESTAMP_NAME="{{ bigip_timestamp_name }}"
+  export OCSP_STAPLING_PROFILE="{{ bigip_ocsp_profile }}"
+```
+
+Add host/domain names to %{PATH}%/domains.txt
 
 Each line will be treated as a separate certificate; the first name is the primary certificate name, additional names will be included as SAN's.
 
@@ -83,3 +100,11 @@ $
 %{TBC}%
 ```
 
+### TODO ###
+
+0. Cleanup the code. It's a bit crap.
+1. Improve error handling and logging
+2. Ensure proper BIGIP partition support is handled in the same way throughput script
+3. Improve handling of > 1 BIGIP situations (seems OK with 2 but it's not great)
+4. Encrypt private keys on disk and prior to sending to BIGIP; re-encrypt with random password before sening to BIGIP; create/update client SSL profile with random password when changed
+5. Use secure/encrypted storage in some way, e.g. network HSM's, Hashicorp's Vault, Veracrypt etc
