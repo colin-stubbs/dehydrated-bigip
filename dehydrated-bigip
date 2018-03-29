@@ -645,13 +645,13 @@ deploy_cert() {
 
     # Enable OCSP Stapling on certs
     # TBC
-    
+
     # Create ClientSSL certificate
     # Read SAN's from certificate
     if test -r "${CERTFILE}" ; then
       SAN_LIST=`openssl x509 -in ${CERTFILE} -text | awk '/X509v3 Subject Alternative Name/ {getline;gsub(/ /, "", $0);gsub(/,/, " ", $0);gsub(/DNS:/, "", $0); print}'`
       NAME_LIST=`for i in ${DOMAIN} ${SAN_LIST} ; do echo ${i} ; done | sort -u | grep -v -E -e '^[0-9]{1,3}\.^[0-9]{1,3}\.^[0-9]{1,3}\.^[0-9]{1,3}$' -`
-      for SERVER_NAME in ${PRIMARY_DOMAIN} ${SAN_LIST} ; do 
+      for SERVER_NAME in ${PRIMARY_DOMAIN} ${SAN_LIST} ; do
         if [ "${TIMESTAMP_NAME}x" == "1x" ] ; then
           CLIENTSSL_NAME="${SERVER_NAME}-${TIMESTAMP}"
         else
@@ -721,6 +721,13 @@ request_failure() {
     echo "ERROR: ACME request failed (Status: ${STATUSCODE}, Reason: ${REASON}, Request Type: ${REQTYPE})"
 }
 
+startup_hook() {
+  # This hook is called before the cron command to do some initial tasks
+  # (e.g. starting a webserver).
+
+  :
+}
+
 exit_hook() {
   # This hook is called at the end of a dehydrated command and can be used
   # to do some final (cleanup or other) tasks.
@@ -729,7 +736,7 @@ exit_hook() {
 }
 
 HANDLER="$1"; shift
-if [[ "${HANDLER}" =~ ^(deploy_challenge|clean_challenge|deploy_cert|unchanged_cert|invalid_challenge|request_failure|exit_hook)$ ]]; then
+if [[ "${HANDLER}" =~ ^(deploy_challenge|clean_challenge|deploy_cert|unchanged_cert|invalid_challenge|request_failure|startup_hook|exit_hook)$ ]]; then
   export BIGIP_Addrs_List="{{ bigip_device_list }}"
   export BIGIP_User="{{ bigip_username }}"
   export BIGIP_Passwd='{{ bigip_password }}'
@@ -745,8 +752,7 @@ if [[ "${HANDLER}" =~ ^(deploy_challenge|clean_challenge|deploy_cert|unchanged_c
   done
 else
   echo "Error: No valid handler provided"
-  exit 1
+  exit 0
 fi
 
 # EOF
-
