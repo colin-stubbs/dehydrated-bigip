@@ -3,7 +3,7 @@
 REDEPLOY_USING_HOOK='hooks/dehydrated-bigip-deploy-management-certificate'
 
 unchanged_cert() {
-  ${BASEDIR}/${REDEPLOY_USING_HOOK} deploy_cert ${2} ${3} ${4} ${5} ${6}
+  ${BASEDIR}/${REDEPLOY_USING_HOOK} deploy_cert $@
 }
 
 HANDLER="$1"; shift

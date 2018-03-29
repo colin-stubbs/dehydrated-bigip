@@ -310,7 +310,7 @@ deploy_cert() {
     # - TIMESTAMP
     #   Timestamp when the specified certificate was created.
 
-    echo "NOTE: Deploying certs to F5 BIG-IP (${DOMAIN}/${KEYFILE}/${CERTFILE}/${FULLCHAINFILE}/${CHAINFILE}/${TIMESTAMP})"
+    echo "NOTE: Deploying certs to F5 BIG-IP (${DOMAIN}#${KEYFILE}#${CERTFILE}#${FULLCHAINFILE}#${CHAINFILE}#${TIMESTAMP})"
 
     if [ "${TIMESTAMP_NAME}x" == "1x" ] ; then
       CERTFILE_NAME="${DOMAIN}-${TIMESTAMP}.crt"
