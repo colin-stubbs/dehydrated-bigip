@@ -15,6 +15,8 @@ BIGIP_USERNAME='{{ bigip_username }}'
 BIGIP_PASSWORD='{{ bigip_password }}'
 # Partition to modify data group within
 BIGIP_PARTITION="{{ bigip_partition }}"
+# Data group name, should match name used within iRule, MUST exist
+BIGIP_DATA_GROUP_NAME="{{ bigip_data_group_name }}"
 # if 1 save config after changes, e.g. equivalent to tmsh save sys config
 BIGIP_SAVE_CONFIG="{{ bigip_save_config }}"
 
@@ -288,7 +290,7 @@ deploy_challenge() {
       return 1
     fi
 
-    OUT=$(addToDataGroup "${BIGIP_Data_Group_Name}" "${TOKEN_FILENAME}" "${TOKEN_VALUE}")
+    OUT=$(addToDataGroup "${BIGIP_DATA_GROUP_NAME}" "${TOKEN_FILENAME}" "${TOKEN_VALUE}")
 
     if ! $OUT; then
       echo "Error: Token for ${DOMAIN} was not added correctly!"
@@ -312,7 +314,7 @@ clean_challenge() {
       return 1
     fi
 
-    OUT=$(deleteFromDataGroup "${BIGIP_Data_Group_Name}" "${TOKEN_FILENAME}")
+    OUT=$(deleteFromDataGroup "${BIGIP_DATA_GROUP_NAME}" "${TOKEN_FILENAME}")
 
     #if ! $OUT; then
     #  echo "Error: Token for ${DOMAIN} was not added correctly!"
