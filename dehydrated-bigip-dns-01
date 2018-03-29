@@ -2,20 +2,19 @@
 
 # Provides an example for how to chain hooks together for deployment of
 # certificates to BIGIP after successful DNS-01 validation
+# hook used to actually deploy certificates
+DEPLOY_HOOK="${BASEDIR}/hooks/dehydrated-bigip-deploy-traffic-certificate"
+# or use the following to deploy the cert/key to BIG-IP management interface
+# DEPLOY_HOOK="${BASEDIR}/hooks/dehydrated-bigip-deploy-management-certificate"
 
 # lexicon first performs DNS-01 validation and obtains the certificate
 # lexicon will NOT perform certificate deployment
 # Refer to: https://github.com/AnalogJ/lexicon/blob/master/examples/dehydrated.default.sh
-/etc/dehydrated/hooks/dehydrated-lexicon "$@"
+${BASEDIR}/hooks/dehydrated-lexicon "$@"
 
 # the following will NOT perform challenge deployment/validation/cleanup etc
-# the following will deploy obtained certificates to BIGIP's as configured in
-# the script
-/etc/dehydrated/hooks/dehydrated-bigip-deploy-traffic-certificate "$@"
-
-# the following will NOT perform challenge deployment/validation/cleanup etc
-# the following will deploy obtained certificates to BIGIP's as configured in
-# the script
-# /etc/dehydrated/hooks/dehydrated-bigip-deploy-management-certificate "$@"
+# use the deploy-traffic-certificate script to handle hook functions not
+# not provided by this script
+${DEPLOY_HOOK} "$@"
 
 # EOF

@@ -4,14 +4,19 @@
 CURL="/usr/bin/curl"
 LOGFILE='/var/log/dehydrated-bigip-http-01.log'
 
-BIGIP_Addrs_List="{{ bigip_device_list }}"
-BIGIP_User="{{ bigip_username }}"
-BIGIP_Passwd='{{ bigip_password }}'
-BIGIP_Partition="{{ bigip_partition }}"
-BIGIP_Data_Group_Name="{{ bigip_data_group }}"
-BIGIP_Client_SSL_Parent="{{ bigip_clientssl_parent }}"
-TIMESTAMP_NAME="{{ bigip_timestamp_name }}"
-OCSP_STAPLING_PROFILE="{{ bigip_ocsp_profile }}"
+# hook used to actually deploy certificates
+DEPLOY_HOOK="${BASEDIR}/hooks/dehydrated-bigip-deploy-traffic-certificate"
+
+# Space seperated list of IP addresses or hostnames to BIG-IP management interfaces
+BIGIP_DEVICE_LIST="{{ bigip_device_list }}"
+# Username to access BIG-IP iControl REST API
+BIGIP_USERNAME='{{ bigip_username }}'
+# Password for user to access BIG-IP iControl REST API
+BIGIP_PASSWORD='{{ bigip_password }}'
+# Partition to modify data group within
+BIGIP_PARTITION="{{ bigip_partition }}"
+# if 1 save config after changes, e.g. equivalent to tmsh save sys config
+BIGIP_SAVE_CONFIG="{{ bigip_save_config }}"
 
 # Initial Curl connection timeout value in seconds.
 TIMEOUT=5
@@ -62,10 +67,10 @@ restCall() {
   # $3 => JSON payload, if any.
 
   CONTTYPE='-H Content-Type: application/json'
-  AUTH="--user $BIGIP_User:$BIGIP_Passwd"
+  AUTH="--user $BIGIP_USERNAME:$BIGIP_PASSWORD"
   TIME="--connect-timeout $TIMEOUT"
   MAXTIME="-m $MAXTIMEOUT"
-  URL="https://$BIGIP_Addrs/mgmt$2"
+  URL="https://$BIGIP_DEVICE/mgmt$2"
   if [[ $1 == POST || $1 == PATCH || $1 == PUT ]]; then
     log "restCall():${CURL} -sk ${TIME} ${MAXTIME} ${CONTTYPE} ${AUTH} ${URL} -X $1 -d \"$3\""
     ${CURL} -sk ${TIME} ${MAXTIME} ${CONTTYPE} ${AUTH} ${URL} -X $1 -d "$3"
@@ -151,33 +156,6 @@ jsonq() {
 }
 
 #-------------------------------------------------------
-# Function: rebootBIGIP()
-#-------------------------------------------------------
-rebootBIGIP() {
-  OUT=$(restCall "POST" "/tm/sys" "{ \"command\": \"reboot\"}")
-  log "rebootBIGIP(): `echo $OUT | python -mjson.tool`"
-}
-
-#-------------------------------------------------------
-# Function: getVersion()
-#   Gets the BIGIP version currently active
-#-------------------------------------------------------
-getVersion() {
-  I=0
-  OUT=$(restCall "GET" "/tm/cloud/net/software-status" | jsonq "[\"items\"][${I}][\"active\"]")
-  log "getVersion(): `echo $OUT`"
-  # cycle through all BIGIP partitions looking for the one that is 'active'
-  while ! $OUT; do
-    I=$((I+1))
-    OUT=$(restCall "GET" "/tm/cloud/net/software-status" | jsonq "[\"items\"][${I}][\"active\"]")
-    log "getVersion(): `echo $OUT`"
-  done
-  OUT=$(restCall "GET" "/tm/cloud/net/software-status" | jsonq "[\"items\"][${I}][\"version\"]")
-  log "getVersion(): `echo $OUT`"
-  echo $OUT | cut -d '.' -f 1,2
-}
-
-#-------------------------------------------------------
 # Function: saveConfig()
 #-------------------------------------------------------
 saveConfig() {
@@ -185,88 +163,6 @@ saveConfig() {
   log "saveConfig(): `echo $OUT | python -mjson.tool`"
   if [[ $(echo $OUT | jsonq '["kind"]') != "tm:sys:config:savestate" ]]; then
     echo "ERROR! Configuration Save was not successful."
-    return 1
-  fi
-  return 0
-}
-
-#-------------------------------------------------------
-# Function: setDefaultRoute()
-# Sets the default route for Traffic processed by VS's or SelfIP's -- NOT the
-# default route on the MGMT port.
-#-------------------------------------------------------
-setDefaultRoute() {
-  OUT=$(restCall "POST" "/tm/net/route" "{ \"name\": \"DefaultRoute\", \"partition\": \"Common\", \
-      \"network\": \"default\", \"gw\": \"${1}\" }")
-  log "setDefaultRoute(): `echo $OUT | python -mjson.tool`"
-  if [[ $(echo $OUT | jsonq '["gw"]') != $1 ]]; then
-    echo "ERROR! Default Network Gateway was not successfully set."
-    return 1
-  fi
-  return 0
-}
-
-#-------------------------------------------------------
-# Function: enableModule()
-# $1 => Module name. Can be:  afm, am, apm, asm, avr, fps, gtm, lc, ltm, pem, swg, & vcmp
-#-------------------------------------------------------
-enableModule() {
-  OUT=$(restCall "PUT" "/tm/sys/provision/$1" "{ \"level\": \"nominal\" }")
-  log "enableModule(): `echo $OUT | python -mjson.tool`"
-}
-
-#-----------------------------------------------------------------------
-#--------------------[ Virtual Server Functions ]-----------------------
-#-----------------------------------------------------------------------
-
-#-------------------------------------------------------
-# Function: addBasicVS()
-# $1 => VS Name
-# $2 => Dst IP
-# $3 => Dst Mask (255.255.255.255 for no mask < v12.0 =>v12.0 = "any")
-# $4 => Dst Port (0 for 'any')
-# $5 => VS Type (tcp, udp, sctp )
-# $6 => Description, if any
-#-------------------------------------------------------
-addBasicVS() {
-  OUT=$(restCall "POST" "/tm/ltm/virtual" "{ \"name\": \"${1}\", \
-    \"destination\": \"/Common/${2}:${4}\", \"mask\": \"${3}\", \
-    \"ipProtocol\": \"${5}\", \"description\": \"${6}\" }")
-  log "addBasicVS(): `echo $OUT | python -mjson.tool`"
-  if [[ $(echo $OUT | jsonq '["kind"]') != "tm:ltm:virtual:virtualstate" ]]; then
-    echo "ERROR: Virtual Server ${1} was not added correctly."
-    return 1
-  fi
-  return 0
-}
-
-#-------------------------------------------------------
-# Function:  modifyVS()
-# $1 => name of VS
-# $2 => JSON payload
-#-------------------------------------------------------
-modifyVS() {
-  OUT=$(restCall "PATCH" "/tm/ltm/virtual/~Common~${1}" "${2}")
-  log "modifyVS(): `echo $OUT | python -mjson.tool`"
-  if [[ $(echo $OUT | jsonq '["kind"]') != "tm:ltm:virtual:virtualstate" ]]; then
-    echo "ERROR: Virtual Server ${1} was not modified correctly."
-    return 1
-  fi
-  return 0
-}
-
-
-#-------------------------------------------------------
-# Function: addProfileToVS()
-# $1 => VS Name
-# $2 => Profile name (http, radius, diameter, ssl, etc.)
-#-------------------------------------------------------
-addProfileToVS() {
-  OUT=$(restCall "POST" "/tm/ltm/virtual/~Common~${1}/profiles" "{ \"name\": \"${2}\", \
-    \"fullPath\": \"/Common/${2}\", \"partition\":\"Common\" }")
-  log "addProfileToVS(): `echo $OUT | python -mjson.tool`"
-  if [[ $(echo $OUT | jsonq '["kind"]') != "tm:ltm:virtual:profiles:profilesstate" ]]; then
-    echo "Error: Profile ${2} was not added to Virtual Server ${1} correctly."
     return 1
   fi
   return 0
@@ -306,7 +202,7 @@ createDataGroup() {
 # $3 => Item value to insert into group
 #-------------------------------------------------------
 addToDataGroup() {
-  OUT=$(restCall "GET" "/tm/ltm/data-group/internal/~${BIGIP_Partition}~${1}")
+  OUT=$(restCall "GET" "/tm/ltm/data-group/internal/~${BIGIP_PARTITION}~${1}")
   log "addToDataGroup()[Initial GET]: `echo $OUT | python -mjson.tool`"
   ## Grab all the current records and add the new one to the end of the JSON array.
   if [[ $(echo $OUT | grep records) == "" ]]; then
@@ -318,7 +214,7 @@ addToDataGroup() {
   log "addToDataGroup()[Record Insert]: `echo \"{ \"records\": ${TT} }\"`"
   ##  Overwrite the old records list with the new one.
   TS=$(echo "{ \"records\": ${TT} }")
-  OUT=$(restCall "PUT" "/tm/ltm/data-group/internal/~${BIGIP_Partition}~${1}" "{ \"records\": ${TT} }")
+  OUT=$(restCall "PUT" "/tm/ltm/data-group/internal/~${BIGIP_PARTITION}~${1}" "{ \"records\": ${TT} }")
   log "addToDataGroup()[Write Back Results]: `echo $OUT | python -mjson.tool`"
   if [[ $(echo $OUT | jsonq '["kind"]') != "tm:ltm:data-group:internal:internalstate" ]]; then
     echo "ERROR: Data Group records were not added correctly."
@@ -336,7 +232,7 @@ addToDataGroup() {
 # $2 => Item to delete from group
 #-------------------------------------------------------
 deleteFromDataGroup() {
-  OUT=$(restCall "GET" "/tm/ltm/data-group/internal/~${BIGIP_Partition}~${1}")
+  OUT=$(restCall "GET" "/tm/ltm/data-group/internal/~${BIGIP_PARTITION}~${1}")
   log "deleteFromDataGroup()[Initial GET]: `echo $OUT | python -mjson.tool`"
   ## Grab all the current records and add the new one to the end of the JSON array.
   if [[ $(echo $OUT | grep records) == "" ]]; then
@@ -352,143 +248,13 @@ deleteFromDataGroup() {
   if [ "${TT}x" != "x" ] ; then
     ##  Overwrite the old records list with the new one.
     TS=$(echo "{ \"records\": ${TT} }")
-    OUT=$(restCall "PUT" "/tm/ltm/data-group/internal/~${BIGIP_Partition}~${1}" "{ \"records\": ${TT} }")
+    OUT=$(restCall "PUT" "/tm/ltm/data-group/internal/~${BIGIP_PARTITION}~${1}" "{ \"records\": ${TT} }")
     log "deleteFromDataGroup()[Write Back Results]: `echo $OUT | python -mjson.tool`"
     if [[ $(echo $OUT | jsonq '["kind"]') != "tm:ltm:data-group:internal:internalstate" ]]; then
       echo "ERROR: Data Group records were not deleted correctly."
       return 1
     fi
   fi
-
-  return 0
-}
-
-#-------------------------------------------------------
-# Function: createCertFromUpload()
-#   Creates a certificate/key object
-# $1 => Name for certificate object
-# $2 => Uploaded file name
-#-------------------------------------------------------
-createCertFromUpload() {
-  NAME="/${BIGIP_Partition}/${1}"
-  OUT=$(restCall "POST" "/tm/sys/crypto/cert" "{ \"command\": \"install\", \"name\": \"${NAME}\", \"from-local-file\": \"/var/config/rest/downloads/${2}\" }")
-  log "createCertFromUpload()[Write Back Results]: `echo $OUT | python -mjson.tool`"
-  return 0
-}
-
-#-------------------------------------------------------
-# Function: ocspStapleCert()
-#   Enables OCSP stapling on the cert
-# $1 => Name for certificate object
-# $2 => Name of OCSP validator profile
-#-------------------------------------------------------
-ocspStapleCert() {
-  # Doesn't currently work in iControl REST with BIGIP v13.0.0 HF2 - no point implementing just yet
-  return 0
-}
-
-#-------------------------------------------------------
-# Function: createKeyFromUpload()
-#   Creates a certificate/key object
-# $1 => Name for certificate object
-# $2 => Uploaded file name
-#-------------------------------------------------------
-createKeyFromUpload() {
-  NAME="/${BIGIP_Partition}/${1}"
-  OUT=$(restCall "POST" "/tm/sys/crypto/key" "{ \"command\": \"install\", \"name\": \"${NAME}\", \"from-local-file\": \"/var/config/rest/downloads/${2}\", \"securityType\": \"normal\" }")
-  log "createCertFromUpload()[Write Back Results]: `echo $OUT | python -mjson.tool`"
-  return 0
-}
-
-#-------------------------------------------------------
-# Function: uploadFile()
-#   Upload file to F5 BIG-IP
-# $1 => Name of file to upload
-# $2 => Destination file name
-#-------------------------------------------------------
-uploadFile() {
-  log "uploadFile()[Upload File]: ${1}"
-
-  if [ ! -r ${1} ] ; then
-    return 1
-  fi
-
-  declare -i CHUNK_SIZE
-  declare -i FILESIZE
-  declare -i TMP_FILESIZE
-  declare -i BYTES_START
-  declare -i BYTES_END
-
-  FILENAME=`basename ${1}`
-  CHUNK_SIZE=$((512 * 1024))
-  FILESIZE=`stat -L -c%s ${1}`
-  TMP_FILESIZE=0
-  BYTES_START=0
-  TMP_FILE=`mktemp`
-
-  if [ ${FILESIZE} -le ${CHUNK_SIZE} ] ; then
-    OUT=$(/bin/bash -c "${CURL} -s --insecure -X POST --data-binary '@${1}' --user '${BIGIP_User}:${BIGIP_Passwd}' -H 'Content-Type: application/octet-stream' -H 'Content-Range: ${BYTES_START}-$((${FILESIZE} - 1))/${FILESIZE}' 'https://${BIGIP_Addrs}/mgmt/shared/file-transfer/uploads/${2}'")
-    log "${CURL} -s --insecure -X POST --data-binary '@${1}' --user '${BIGIP_User}:${BIGIP_Passwd}' -H 'Content-Type: application/octet-stream' -H 'Content-Range: ${BYTES_START}-$((${FILESIZE} - 1))/${FILESIZE}' 'https://${BIGIP_Addrs}/mgmt/shared/file-transfer/uploads/${2}'"
-  else
-    TMP_FILE=`mktemp`
-    while [ ${BYTES_START} -le ${FILESIZE} ] ; do
-      echo -n '' > ${TMP_FILE}
-      dd if="${1}" skip=${BYTES_START} bs=${CHUNK_SIZE} count=1 of="${TMP_FILE}"
-      TMP_FILESIZE=`stat -L -c%s ${TMP_FILE}`
-      if [ $((${BYTES_START} + ${CHUNK_SIZE})) -gt ${TMP_FILESIZE} ] ; then
-        BYTES_END=${FILESIZE}
-      else
-        BYTES_END=$((${BYTES_START} + ${TMP_FILESIZE}))
-      fi
-      OUT=$(/bin/bash -c "${CURL} -s --insecure -X POST --data-binary '@${TMP_FILE}' --user '${BIGIP_User}:${BIGIP_Passwd}' -H 'Content-Type: application/octet-stream' -H 'Content-Range: ${BYTES_START}-$((${BYTES_END} - 1))/${FILESIZE}' 'https://${BIGIP_Addrs}/mgmt/shared/file-transfer/uploads/${2}'")
-      log "${CURL} -s --insecure -X POST --data-binary '@${TMP_FILE}' --user '${BIGIP_User}:${BIGIP_Passwd}' -H 'Content-Type: application/octet-stream' -H 'Content-Range: ${BYTES_START}-$((${BYTES_END} - 1))/${FILESIZE}' 'https://${BIGIP_Addrs}/mgmt/shared/file-transfer/uploads/${2}'"
-      BYTES_START=${BYTES_END}
-    done
-  fi
-
-  if [ "${TMP_FILE}x" != "x" ] && test -e "${TMP_FILE}" ; then
-    rm -f "${TMP_FILE}"
-  fi
-
-  ##  Overwrite the old records list with the new one.
-  # OUT=$(restCall "POST" "/mgmt/shared/file-transfer/uploads/~${BIGIP_Partition}~${1}" "{ \"records\": ${TT} }")
-  log "uploadFile()[Upload results]: `echo $OUT | python -mjson.tool`"
-
-  return 0
-}
-
-#-------------------------------------------------------
-# Function: createClientSSLProfile()
-# Creates a client SSL profile on BIGIP
-# $1 => name of client SSL profile
-# $2 => parent SSL profile
-# $3 => partition
-# $4 => cert
-# $5 => key
-# $6 => chain
-# $7 => server name
-#-------------------------------------------------------
-createClientSSLProfile() {
-  EXISTENCE=$(restCall "GET" "/tm/ltm/profile/client-ssl/~${3}~${1}")
-  log "createClientSSLProfile(): $EXISTENCE"
-
-  if [ "`echo ${EXISTENCE} | grep '"kind":"tm:ltm:profile:client-ssl:client-sslstate"'`x" != "x" ] ; then
-    # Profile already exists
-    OUT=$(restCall "PATCH" "/tm/ltm/profile/client-ssl/~${3}~${1}" "{ \"defaultsFrom\": \"${2}\", \"cert\": \"${4}\", \"key\": \"${5}\", \"chain\": \"${6}\", \"serverName\": \"${7}\" }")
-  else
-    # Create new profile
-    OUT=$(restCall "POST" "/tm/ltm/profile/client-ssl" "{ \"name\": \"${1}\", \"partition\": \"${3}\", \"defaultsFrom\": \"${2}\", \"cert\": \"${4}\", \"key\": \"${5}\", \"chain\": \"${6}\", \"serverName\": \"${7}\" }")
-  fi
-
-  log "createClientSSLProfile(): $OUT"
-
-  #if [[ $(echo $OUT | jsonq '["kind"]') != "tm:ltm:data-group:internal:internalstate" ]] && [[ $(echo $OUT | jsonq '["kind"]') != "tm:ltm:profile:client-ssl:client-sslstate" ]]; then
-  #  echo "ERROR: Unable to create client SSL profile ${1}"
-  #  log "createClientSSLProfile(): $OUT"
-  #  return 1
-  #fi
-#
-#  log "createClientSSLProfile(): `echo $OUT | python -mjson.tool`"
 
   return 0
 }
@@ -554,202 +320,17 @@ clean_challenge() {
     #fi
 }
 
-deploy_cert() {
-    local DOMAIN="${1}" KEYFILE="${2}" CERTFILE="${3}" FULLCHAINFILE="${4}" CHAINFILE="${5}" TIMESTAMP="${6}"
-
-    # This hook is called once for each certificate that has been
-    # produced. Here you might, for instance, copy your new certificates
-    # to service-specific locations and reload the service.
-    #
-    # Parameters:
-    # - DOMAIN
-    #   The primary domain name, i.e. the certificate common
-    #   name (CN).
-    # - KEYFILE
-    #   The path of the file containing the private key.
-    # - CERTFILE
-    #   The path of the file containing the signed certificate.
-    # - FULLCHAINFILE
-    #   The path of the file containing the full certificate chain.
-    # - CHAINFILE
-    #   The path of the file containing the intermediate certificate(s).
-    # - TIMESTAMP
-    #   Timestamp when the specified certificate was created.
-
-    echo "NOTE: Deploying certs to F5 BIG-IP (${DOMAIN}/${KEYFILE}/${CERTFILE}/${FULLCHAINFILE}/${CHAINFILE}/${TIMESTAMP})"
-
-    if [ "${TIMESTAMP_NAME}x" == "1x" ] ; then
-      CERTFILE_NAME="${DOMAIN}-${TIMESTAMP}.crt"
-      KEYFILE_NAME="${DOMAIN}-${TIMESTAMP}.key"
-      FULLCHAINFILE_NAME="${DOMAIN}-${TIMESTAMP}-FULLCHAIN.crt"
-      CHAINFILE_NAME="${DOMAIN}-${TIMESTAMP}-CHAIN.crt"
-    else
-      CERTFILE_NAME="${DOMAIN}.crt"
-      KEYFILE_NAME="${DOMAIN}.key"
-      FULLCHAINFILE_NAME="${DOMAIN}-FULLCHAIN.crt"
-      CHAINFILE_NAME="${DOMAIN}-CHAIN.crt"
-    fi
-
-    if [ -r ${CERTFILE} ] ; then
-        OUT=$(uploadFile ${CERTFILE} ${DOMAIN}-${TIMESTAMP}.crt)
-        if ! $OUT; then
-          echo "Error: Certificate for ${DOMAIN} was not uploaded correctly!"
-          exit 1
-        fi
-
-        OUT=$(createCertFromUpload ${CERTFILE_NAME} ${DOMAIN}-${TIMESTAMP}.crt)
-        if ! $OUT; then
-          echo "Error: Certificate for ${DOMAIN} was not created correctly!"
-          exit 1
-        fi
-    else
-        echo "Error: File ${CERTFILE} does not exist or is unreadable!"
-        exit 1
-    fi
-
-    if [ -r ${KEYFILE} ] ; then
-        OUT=$(uploadFile ${KEYFILE} ${DOMAIN}-${TIMESTAMP}.key)
-        if ! $OUT; then
-          echo "Error: Certificate for ${DOMAIN} was not uploaded correctly!"
-        fi
-
-        OUT=$(createKeyFromUpload ${KEYFILE_NAME} ${DOMAIN}-${TIMESTAMP}.key)
-        if ! $OUT; then
-          echo "Error: Certificate for ${DOMAIN} was not created correctly!"
-        fi
-    else
-        echo "Error: File ${KEYFILE} does not exist or is unreadable!"
-        exit 1
-    fi
-
-    if [ -r ${FULLCHAINFILE} ] ; then
-        OUT=$(uploadFile ${FULLCHAINFILE} ${DOMAIN}-${TIMESTAMP}-FULLCHAIN.crt)
-        if ! $OUT; then
-          echo "Error: Certificate for ${DOMAIN} was not uploaded correctly!"
-        fi
-
-        OUT=$(createCertFromUpload ${FULLCHAINFILE_NAME} ${DOMAIN}-${TIMESTAMP}-FULLCHAIN.crt)
-        if ! $OUT; then
-          echo "Error: Certificate for ${DOMAIN} was not created correctly!"
-        fi
-    else
-        echo "Error: File ${FULLCHAINFILE} does not exist or is unreadable!"
-        exit 1
-    fi
-
-    if [ -r ${CHAINFILE} ] ; then
-        OUT=$(uploadFile ${CHAINFILE} ${DOMAIN}-${TIMESTAMP}-CHAIN.crt)
-        if ! $OUT; then
-          echo "Error: Certificate for ${DOMAIN} was not uploaded correctly!"
-        fi
-
-        OUT=$(createCertFromUpload ${CHAINFILE_NAME} ${DOMAIN}-${TIMESTAMP}-CHAIN.crt)
-        if ! $OUT; then
-          echo "Error: Certificate for ${DOMAIN} was not created correctly!"
-        fi
-    else
-        echo "Error: File ${CHAINFILE} does not exist or is unreadable!"
-        exit 1
-    fi
-
-    # Enable OCSP Stapling on certs
-    # TBC
-
-    # Create ClientSSL certificate
-    # Read SAN's from certificate
-    if test -r "${CERTFILE}" ; then
-      SAN_LIST=`openssl x509 -in ${CERTFILE} -text | awk '/X509v3 Subject Alternative Name/ {getline;gsub(/ /, "", $0);gsub(/,/, " ", $0);gsub(/DNS:/, "", $0); print}'`
-      NAME_LIST=`for i in ${DOMAIN} ${SAN_LIST} ; do echo ${i} ; done | sort -u | grep -v -E -e '^[0-9]{1,3}\.^[0-9]{1,3}\.^[0-9]{1,3}\.^[0-9]{1,3}$' -`
-      for SERVER_NAME in ${PRIMARY_DOMAIN} ${SAN_LIST} ; do
-        if [ "${TIMESTAMP_NAME}x" == "1x" ] ; then
-          CLIENTSSL_NAME="${SERVER_NAME}-${TIMESTAMP}"
-        else
-          CLIENTSSL_NAME="${SERVER_NAME}"
-        fi
-
-        echo "Creating Client SSL profile ${CLIENTSSL_NAME} for ${SERVER_NAME} from ${CERTFILE}"
-        OUT=$(createClientSSLProfile ${CLIENTSSL_NAME} ${BIGIP_Client_SSL_Parent} ${BIGIP_Partition} ${CERTFILE_NAME} ${KEYFILE_NAME} ${CHAINFILE_NAME} ${SERVER_NAME})
-      done
-    fi
-}
-
-unchanged_cert() {
-    local DOMAIN="${1}" KEYFILE="${2}" CERTFILE="${3}" FULLCHAINFILE="${4}" CHAINFILE="${5}"
-
-    # This hook is called once for each certificate that is still
-    # valid and therefore wasn't reissued.
-    #
-    # Parameters:
-    # - DOMAIN
-    #   The primary domain name, i.e. the certificate common
-    #   name (CN).
-    # - KEYFILE
-    #   The path of the file containing the private key.
-    # - CERTFILE
-    #   The path of the file containing the signed certificate.
-    # - FULLCHAINFILE
-    #   The path of the file containing the full certificate chain.
-    # - CHAINFILE
-    #   The path of the file containing the intermediate certificate(s).
-
-    echo "NOTE: Certificate was not reissued (${DOMAIN}/${KEYFILE}/${CERTFILE}/${FULLCHAINFILE}/${CHAINFILE})"
-}
-
-invalid_challenge() {
-    local DOMAIN="${1}" RESPONSE="${2}"
-
-    # This hook is called if the challenge response has failed, so domain
-    # owners can be aware and act accordingly.
-    #
-    # Parameters:
-    # - DOMAIN
-    #   The primary domain name, i.e. the certificate common
-    #   name (CN).
-    # - RESPONSE
-    #   The response that the verification server returned
-
-    echo "ERROR: Invalid ACME challenge"
-}
-
-request_failure() {
-    local STATUSCODE="${1}" REASON="${2}" REQTYPE=${3}
-
-    # This hook is called when a HTTP request fails (e.g., when the ACME
-    # server is busy, returns an error, etc). It will be called upon any
-    # response code that does not start with '2'. Useful to alert admins
-    # about problems with requests.
-    #
-    # Parameters:
-    # - STATUSCODE
-    #   The HTML status code that originated the error.
-    # - REASON
-    #   The specified reason for the error.
-    # - REQTYPE
-    #   The kind of request that was made (GET, POST...)
-
-    echo "ERROR: ACME request failed (Status: ${STATUSCODE}, Reason: ${REASON}, Request Type: ${REQTYPE})"
-}
-
-startup_hook() {
-  # This hook is called before the cron command to do some initial tasks
-  # (e.g. starting a webserver).
-
-  :
-}
-
-exit_hook() {
-  # This hook is called at the end of a dehydrated command and can be used
-  # to do some final (cleanup or other) tasks.
-
-  :
-}
-
 HANDLER="$1"; shift
 if [ -n "$(type -t $HANDLER)" ] && [ "$(type -t $HANDLER)" = function ]; then
-  for BIGIP_Addrs in ${BIGIP_Addrs_List} ; do
-    echo "Deploying to BIGIP ${BIGIP_Addrs}"
+  # iterate thru list of BIGIP's that we need to operate upon
+  for BIGIP_DEVICE in ${BIGIP_DEVICE_LIST} ; do
+    echo "Deploying to BIGIP ${BIGIP_DEVICE}"
     "$HANDLER" "$@"
   done
 fi
+
+# use the deploy-traffic-certificate script to handle hook functions not
+# not provided by this script
+${DEPLOY_HOOK} "$@"
 
 # EOF

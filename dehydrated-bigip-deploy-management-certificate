@@ -4,9 +4,16 @@
 CURL="/usr/bin/curl"
 LOGFILE='/var/log/dehydrated-bigip-deploy-management-certificate.log'
 
-BIGIP_Addrs='{{ bigip_address }}'
-BIGIP_User='{{ bigip_username }}'
-BIGIP_Passwd='{{ bigip_password }}'
+# IP address or hostname to BIG-IP management interface
+BIGIP_DEVICE='{{ bigip_address }}'
+# Username to access BIG-IP iControl REST API
+BIGIP_USERNAME='{{ bigip_username }}'
+# Password for user to access BIG-IP iControl REST API
+BIGIP_PASSWORD='{{ bigip_password }}'
+# if 1 enable OCSP stapling
+OCSP_STAPLE="{{ bigip_ocsp_staple }}"
+# if 1 save config after changes, e.g. equivalent to tmsh save sys config
+BIGIP_SAVE_CONFIG="{{ bigip_save_config }}"
 
 # Initial Curl connection timeout value in seconds.
 TIMEOUT=5
@@ -57,10 +64,10 @@ restCall() {
   # $3 => JSON payload, if any.
 
   CONTTYPE='-H Content-Type: application/json'
-  AUTH="--user $BIGIP_User:$BIGIP_Passwd"
+  AUTH="--user $BIGIP_USERNAME:$BIGIP_PASSWORD"
   TIME="--connect-timeout $TIMEOUT"
   MAXTIME="-m $MAXTIMEOUT"
-  URL="https://$BIGIP_Addrs/mgmt$2"
+  URL="https://$BIGIP_DEVICE/mgmt$2"
   if [[ $1 == POST || $1 == PATCH || $1 == PUT ]]; then
     log "restCall():${CURL} -sk ${TIME} ${MAXTIME} ${CONTTYPE} ${AUTH} ${URL} -X $1 -d \"$3\""
     ${CURL} -sk ${TIME} ${MAXTIME} ${CONTTYPE} ${AUTH} ${URL} -X $1 -d "$3"
@@ -175,8 +182,8 @@ uploadFile() {
   TMP_FILE=`mktemp`
 
   if [ ${FILESIZE} -le ${CHUNK_SIZE} ] ; then
-    OUT=$(/bin/bash -c "${CURL} -s --insecure -X POST --data-binary '@${1}' --user '${BIGIP_User}:${BIGIP_Passwd}' -H 'Content-Type: application/octet-stream' -H 'Content-Range: ${BYTES_START}-$((${FILESIZE} - 1))/${FILESIZE}' 'https://${BIGIP_Addrs}/mgmt/shared/file-transfer/uploads/${2}'")
-    log "${CURL} -s --insecure -X POST --data-binary '@${1}' --user '${BIGIP_User}:${BIGIP_Passwd}' -H 'Content-Type: application/octet-stream' -H 'Content-Range: ${BYTES_START}-$((${FILESIZE} - 1))/${FILESIZE}' 'https://${BIGIP_Addrs}/mgmt/shared/file-transfer/uploads/${2}'"
+    OUT=$(/bin/bash -c "${CURL} -s --insecure -X POST --data-binary '@${1}' --user '${BIGIP_USERNAME}:${BIGIP_PASSWORD}' -H 'Content-Type: application/octet-stream' -H 'Content-Range: ${BYTES_START}-$((${FILESIZE} - 1))/${FILESIZE}' 'https://${BIGIP_DEVICE}/mgmt/shared/file-transfer/uploads/${2}'")
+    log "${CURL} -s --insecure -X POST --data-binary '@${1}' --user '${BIGIP_USERNAME}:${BIGIP_PASSWORD}' -H 'Content-Type: application/octet-stream' -H 'Content-Range: ${BYTES_START}-$((${FILESIZE} - 1))/${FILESIZE}' 'https://${BIGIP_DEVICE}/mgmt/shared/file-transfer/uploads/${2}'"
   else
     TMP_FILE=`mktemp`
     while [ ${BYTES_START} -le ${FILESIZE} ] ; do
@@ -188,8 +195,8 @@ uploadFile() {
       else
         BYTES_END=$((${BYTES_START} + ${TMP_FILESIZE}))
       fi
-      OUT=$(/bin/bash -c "${CURL} -s --insecure -X POST --data-binary '@${TMP_FILE}' --user '${BIGIP_User}:${BIGIP_Passwd}' -H 'Content-Type: application/octet-stream' -H 'Content-Range: ${BYTES_START}-$((${BYTES_END} - 1))/${FILESIZE}' 'https://${BIGIP_Addrs}/mgmt/shared/file-transfer/uploads/${2}'")
-      log "${CURL} -s --insecure -X POST --data-binary '@${TMP_FILE}' --user '${BIGIP_User}:${BIGIP_Passwd}' -H 'Content-Type: application/octet-stream' -H 'Content-Range: ${BYTES_START}-$((${BYTES_END} - 1))/${FILESIZE}' 'https://${BIGIP_Addrs}/mgmt/shared/file-transfer/uploads/${2}'"
+      OUT=$(/bin/bash -c "${CURL} -s --insecure -X POST --data-binary '@${TMP_FILE}' --user '${BIGIP_USERNAME}:${BIGIP_PASSWORD}' -H 'Content-Type: application/octet-stream' -H 'Content-Range: ${BYTES_START}-$((${BYTES_END} - 1))/${FILESIZE}' 'https://${BIGIP_DEVICE}/mgmt/shared/file-transfer/uploads/${2}'")
+      log "${CURL} -s --insecure -X POST --data-binary '@${TMP_FILE}' --user '${BIGIP_USERNAME}:${BIGIP_PASSWORD}' -H 'Content-Type: application/octet-stream' -H 'Content-Range: ${BYTES_START}-$((${BYTES_END} - 1))/${FILESIZE}' 'https://${BIGIP_DEVICE}/mgmt/shared/file-transfer/uploads/${2}'"
       BYTES_START=${BYTES_END}
     done
   fi
