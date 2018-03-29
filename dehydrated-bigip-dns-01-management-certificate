@@ -22,6 +22,6 @@ ${BASEDIR}/hooks/dehydrated-lexicon "$@"
 BIGIP_DEVICE=${2}
 
 # Use the deploy hook
-${DEPLOY_HOOK} "$@"
+${DEPLOY_HOOK} $@ ${BIGIP_DEVICE}
 
 # EOF

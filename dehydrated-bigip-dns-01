@@ -24,7 +24,7 @@ ${BASEDIR}/hooks/dehydrated-lexicon "$@"
 # use the deploy-traffic-certificate script to handle hook functions not
 # not provided by this script
 for BIGIP_DEVICE in ${BIGIP_DEVICE_LIST} ; do
-  ${DEPLOY_HOOK} "$@"
+  ${DEPLOY_HOOK} $@ ${BIGIP_DEVICE}
 done
 
 # EOF

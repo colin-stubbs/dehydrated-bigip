@@ -338,7 +338,7 @@ fi
 
 # deploy certificates to each BIG-IP
 for BIGIP_DEVICE in ${BIGIP_DEVICE_LIST} ; do
-  ${DEPLOY_HOOK} "$@"
+  ${DEPLOY_HOOK} $@ ${BIGIP_DEVICE}
 done
 
 # EOF

@@ -8,7 +8,9 @@ done
 REDEPLOY_USING_HOOK='hooks/dehydrated-bigip-deploy-traffic-certificate'
 
 unchanged_cert() {
-  ${BASEDIR}/${REDEPLOY_USING_HOOK} deploy_cert $@
+  for BIGIP_DEVICE in ${BIGIP_DEVICE_LIST} ; do
+    ${BASEDIR}/${REDEPLOY_USING_HOOK} deploy_cert $@ ${BIGIP_DEVICE}
+  done
 }
 
 HANDLER="$1"; shift

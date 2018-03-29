@@ -9,12 +9,12 @@ done
 CURL="/usr/bin/curl"
 LOGFILE=${LOGFILE:-'/var/log/dehydrated-bigip-deploy-management-certificate.log'}
 
-# IP address or hostname to BIG-IP management interface
-BIGIP_DEVICE=${BIGIP_DEVICE:-$2}
 # Username to access BIG-IP iControl REST API
 BIGIP_USERNAME=${BIGIP_USERNAME:-'admin'}
 # Password for user to access BIG-IP iControl REST API
 BIGIP_PASSWORD=${BIGIP_PASSWORD:-'admin'}
+# if 1 use the certificate timestamp as part of certificate name when installed
+TIMESTAMP_NAME=${TIMESTAMP_NAME:-0}
 # if 1 enable OCSP stapling
 OCSP_STAPLE=${OCSP_STAPLE:-1}
 # if 1 save config after changes, e.g. equivalent to tmsh save sys config
@@ -218,7 +218,12 @@ uploadFile() {
 }
 
 deploy_cert() {
-    local DOMAIN="${1}" KEYFILE="${2}" FULLCHAINFILE="${4}"
+    local DOMAIN="${1}" KEYFILE="${2}" CERTFILE="${3}" FULLCHAINFILE="${4}" CHAINFILE="${5}" TIMESTAMP="${6}" BIGIP_DEVICE="${7}"
+
+    if [ "${TIMESTAMP}x" != "x" ] && [ "${BIGIP_DEVICE}x" == "x" ] ; then
+      BIGIP_DEVICE=${TIMESTAMP}
+      TIMESTAMP="UNKNOWN"
+    fi
 
     # This hook is called once for each certificate that has been
     # produced. Here you might, for instance, copy your new certificates
@@ -235,10 +240,17 @@ deploy_cert() {
 
     echo "NOTE: Deploying management interface certs and key to F5 BIG-IP (${DOMAIN}#${KEYFILE}#${FULLCHAINFILE})"
 
-    CERTFILE_NAME="${DOMAIN}.crt"
-    KEYFILE_NAME="${DOMAIN}.key"
-    FULLCHAINFILE_NAME="${DOMAIN}-FULLCHAIN.crt"
-    CHAINFILE_NAME="${DOMAIN}-CHAIN.crt"
+    if [ "${TIMESTAMP_NAME}x" == "1x" ] && [ "${TIMESTAMP}x" != "x" ] ; then
+      CERTFILE_NAME="${DOMAIN}-${TIMESTAMP}.crt"
+      KEYFILE_NAME="${DOMAIN}-${TIMESTAMP}.key"
+      FULLCHAINFILE_NAME="${DOMAIN}-${TIMESTAMP}-FULLCHAIN.crt"
+      CHAINFILE_NAME="${DOMAIN}-${TIMESTAMP}-CHAIN.crt"
+    else
+      CERTFILE_NAME="${DOMAIN}.crt"
+      KEYFILE_NAME="${DOMAIN}.key"
+      FULLCHAINFILE_NAME="${DOMAIN}-FULLCHAIN.crt"
+      CHAINFILE_NAME="${DOMAIN}-CHAIN.crt"
+    fi
 
     echo "NOTE: Uploading full certificate chain and key"
 
