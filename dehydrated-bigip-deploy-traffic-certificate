@@ -2,7 +2,7 @@
 
 ## Programs
 CURL="/usr/bin/curl"
-LOGFILE='/var/log/dehydrated-bigip-http-01.log'
+LOGFILE='/var/log/dehydrated-bigip-deploy-traffic-certificate.log'
 
 BIGIP_Addrs_List="{{ bigip_device_list }}"
 BIGIP_User="{{ bigip_username }}"
@@ -514,20 +514,6 @@ deploy_challenge() {
     #   validation, this is what you want to put in the _acme-challenge
     #   TXT record. For HTTP validation it is the value that is expected
     #   be found in the $TOKEN_FILENAME file.
-
-    echo "NOTE: Deploying challenge to F5 BIG-IP (${DOMAIN}/${TOKEN_FILENAME}/${TOKEN_VALUE})"
-
-    if (! whenAvailable); then
-      echo "ERROR: BIGIP Not responding... Please check to see if it is running!"
-      return 1
-    fi
-
-    OUT=$(addToDataGroup "${BIGIP_Data_Group_Name}" "${TOKEN_FILENAME}" "${TOKEN_VALUE}")
-
-    if ! $OUT; then
-      echo "Error: Token for ${DOMAIN} was not added correctly!"
-      exit 1
-    fi
 }
 
 clean_challenge() {
@@ -538,20 +524,6 @@ clean_challenge() {
     # files or DNS records that are no longer needed.
     #
     # The parameters are the same as for deploy_challenge.
-
-    echo "NOTE: Removing challenge from F5 BIG-IP (${DOMAIN}/${TOKEN_FILENAME})"
-
-    if (! whenAvailable); then
-      echo "ERROR: BIGIP Not responding... Please check to see if it is running!"
-      return 1
-    fi
-
-    OUT=$(deleteFromDataGroup "${BIGIP_Data_Group_Name}" "${TOKEN_FILENAME}")
-
-    #if ! $OUT; then
-    #  echo "Error: Token for ${DOMAIN} was not added correctly!"
-    #  exit 1
-    #fi
 }
 
 deploy_cert() {
