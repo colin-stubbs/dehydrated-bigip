@@ -1,37 +1,42 @@
 #!/bin/bash
 
+# pull in conf.d files
+for i in ${BASEDIR}/conf.d/*.sh ; do
+  . ${i}
+done
+
 ## Programs
 CURL="/usr/bin/curl"
-LOGFILE='/var/log/dehydrated-bigip-deploy-traffic-certificate.log'
+LOGFILE=${LOGFILE:-'/var/log/dehydrated-bigip-deploy-traffic-certificate.log'}
 
-# Space seperated list of IP addresses or hostnames to BIG-IP management interfaces
-BIGIP_DEVICE_LIST="{{ bigip_device_list }}"
+# IP address or hostname to BIG-IP management interface
+BIGIP_DEVICE=${BIGIP_DEVICE:-'192.168.1.245'}
 # Username to access BIG-IP iControl REST API
-BIGIP_USERNAME='{{ bigip_username }}'
+BIGIP_USERNAME=${BIGIP_USERNAME:-'admin'}
 # Password for user to access BIG-IP iControl REST API
-BIGIP_PASSWORD='{{ bigip_password }}'
+BIGIP_PASSWORD=${BIGIP_PASSWORD:-'admin'}
 # Partition to configure SSL profiles within
-BIGIP_PARTITION="{{ bigip_partition }}"
+BIGIP_PARTITION=${BIGIP_PARTITION:-'Common'}
 # Client SSL profile to use as parent for newly created or updated profiles
-BIGIP_CLIENT_SSL_MANAGE="{{ bigip_clientssl_manage }}"
+BIGIP_CLIENT_SSL_MANAGE=${BIGIP_CLIENT_SSL_MANAGE:-1}
 # Client SSL profile to use as parent for newly created or updated profiles
-BIGIP_CLIENT_SSL_PARENT="{{ bigip_clientssl_parent }}"
+BIGIP_CLIENT_SSL_PARENT=${BIGIP_CLIENT_SSL_PARENT:-'clientssl'}
 # if 1 use the certificate timestamp as part of certificate name when installed
-TIMESTAMP_NAME="{{ bigip_timestamp_name }}"
-# if 1 enable OCSP stapling
-OCSP_STAPLE="{{ bigip_ocsp_staple }}"
+TIMESTAMP_NAME=${TIMESTAMP_NAME:-0}
 # OCSP stapling profile to utilise if OCSP_STAPLE="1"
-OCSP_STAPLING_PROFILE="{{ bigip_ocsp_profile }}"
+OCSP_STAPLING_PROFILE=${OCSP_STAPLING_PROFILE:-''}
+# if 1 enable OCSP stapling
+OCSP_STAPLE=${OCSP_STAPLE:-1}
 # if 1 save config after changes, e.g. equivalent to tmsh save sys config
-BIGIP_SAVE_CONFIG="{{ bigip_save_config }}"
+BIGIP_SAVE_CONFIG=${BIGIP_SAVE_CONFIG:-1}
 
 # Initial Curl connection timeout value in seconds.
-TIMEOUT=5
+TIMEOUT=${TIMEOUT:-5}
 ## Maximum time for an API call to return. Depending on what you are doing,
 ##  this value should be quite large as some calls take a long time to
 ##  complete!  Testing your script should provide you with a good ideal
 ##  about what is too long.  I usually start at 120 seconds and go up from there.
-MAXTIMEOUT=120
+MAXTIMEOUT=${MAXTIMEOUT:-120}
 
 ####### START F5CommonRESTAPIs.sh #######
 
@@ -409,11 +414,7 @@ deploy_cert() {
 
 HANDLER="$1"; shift
 if [ -n "$(type -t $HANDLER)" ] && [ "$(type -t $HANDLER)" = function ]; then
-  # iterate thru list of BIGIP's that we need to operate upon
-  for BIGIP_DEVICE in ${BIGIP_DEVICE_LIST} ; do
-    echo "Deploying to BIGIP ${BIGIP_DEVICE}"
-    "$HANDLER" "$@"
-  done
+  "$HANDLER" "$@"
 fi
 
 # EOF

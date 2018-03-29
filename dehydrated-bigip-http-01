@@ -1,32 +1,37 @@
 #!/bin/bash
 
+# pull in conf.d files
+for i in ${BASEDIR}/conf.d/*.sh ; do
+  . ${i}
+done
+
 ## Programs
 CURL="/usr/bin/curl"
-LOGFILE='/var/log/dehydrated-bigip-http-01.log'
+LOGFILE=${LOGFILE:-'/var/log/dehydrated-bigip-http-01.log'}
 
 # hook used to actually deploy certificates
-DEPLOY_HOOK="${BASEDIR}/hooks/dehydrated-bigip-deploy-traffic-certificate"
+DEPLOY_HOOK=${DEPLOY_HOOK:-"${BASEDIR}/hooks/dehydrated-bigip-deploy-traffic-certificate"}
 
 # Space seperated list of IP addresses or hostnames to BIG-IP management interfaces
-BIGIP_DEVICE_LIST="{{ bigip_device_list }}"
+BIGIP_DEVICE_LIST=${BIGIP_DEVICE_LIST:-'192.168.1.245'}
 # Username to access BIG-IP iControl REST API
-BIGIP_USERNAME='{{ bigip_username }}'
+BIGIP_USERNAME=${BIGIP_USERNAME:-'admin'}
 # Password for user to access BIG-IP iControl REST API
-BIGIP_PASSWORD='{{ bigip_password }}'
-# Partition to modify data group within
-BIGIP_PARTITION="{{ bigip_partition }}"
+BIGIP_PASSWORD=${BIGIP_PASSWORD:-'admin'}
+# Partition to configure SSL profiles within
+BIGIP_PARTITION=${BIGIP_PARTITION:-'Common'}
 # Data group name, should match name used within iRule, MUST exist
-BIGIP_DATA_GROUP_NAME="{{ bigip_data_group_name }}"
+BIGIP_DATA_GROUP_NAME=${BIGIP_DATA_GROUP_NAME:-'letsencrypt_http-01'}
 # if 1 save config after changes, e.g. equivalent to tmsh save sys config
-BIGIP_SAVE_CONFIG="{{ bigip_save_config }}"
+BIGIP_SAVE_CONFIG=${BIGIP_SAVE_CONFIG:-1}
 
 # Initial Curl connection timeout value in seconds.
-TIMEOUT=5
+TIMEOUT=${TIMEOUT:-5}
 ## Maximum time for an API call to return. Depending on what you are doing,
 ##  this value should be quite large as some calls take a long time to
 ##  complete!  Testing your script should provide you with a good ideal
 ##  about what is too long.  I usually start at 120 seconds and go up from there.
-MAXTIMEOUT=120
+MAXTIMEOUT=${MAXTIMEOUT:-120}
 
 ####### START F5CommonRESTAPIs.sh #######
 
@@ -326,13 +331,14 @@ HANDLER="$1"; shift
 if [ -n "$(type -t $HANDLER)" ] && [ "$(type -t $HANDLER)" = function ]; then
   # iterate thru list of BIGIP's that we need to operate upon
   for BIGIP_DEVICE in ${BIGIP_DEVICE_LIST} ; do
-    echo "Deploying to BIGIP ${BIGIP_DEVICE}"
+    # conigure each BIG-IP to support HTTP-01 validation
     "$HANDLER" "$@"
   done
 fi
 
-# use the deploy-traffic-certificate script to handle hook functions not
-# not provided by this script
-${DEPLOY_HOOK} "$@"
+# deploy certificates to each BIG-IP
+for BIGIP_DEVICE in ${BIGIP_DEVICE_LIST} ; do
+  ${DEPLOY_HOOK} "$@"
+done
 
 # EOF

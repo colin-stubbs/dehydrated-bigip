@@ -5,15 +5,9 @@ for i in ${BASEDIR}/conf.d/*.sh ; do
   . ${i}
 done
 
-# Space seperated list of IP addresses or hostnames to BIG-IP management interfaces
-BIGIP_DEVICE_LIST=${BIGIP_DEVICE_LIST:-'192.168.1.245'}
-
 # Provides an example for how to chain hooks together for deployment of
 # certificates to BIGIP after successful DNS-01 validation
-# hook used to actually deploy certificates
-DEPLOY_HOOK="${BASEDIR}/hooks/dehydrated-bigip-deploy-traffic-certificate"
-# or use the following to deploy the cert/key to BIG-IP management interface
-# DEPLOY_HOOK="${BASEDIR}/hooks/dehydrated-bigip-deploy-management-certificate"
+DEPLOY_HOOK="${BASEDIR}/hooks/dehydrated-bigip-deploy-management-certificate"
 
 # lexicon first performs DNS-01 validation and obtains the certificate
 # lexicon will NOT perform certificate deployment
@@ -23,8 +17,11 @@ ${BASEDIR}/hooks/dehydrated-lexicon "$@"
 # the following will NOT perform challenge deployment/validation/cleanup etc
 # use the deploy-traffic-certificate script to handle hook functions not
 # not provided by this script
-for BIGIP_DEVICE in ${BIGIP_DEVICE_LIST} ; do
-  ${DEPLOY_HOOK} "$@"
-done
+
+# The BIG-IP device should simply be the same as the hostname in this case
+BIGIP_DEVICE=${2}
+
+# Use the deploy hook
+${DEPLOY_HOOK} "$@"
 
 # EOF

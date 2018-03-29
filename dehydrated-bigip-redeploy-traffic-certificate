@@ -1,5 +1,10 @@
 #!/bin/bash
 
+# pull in conf.d files
+for i in ${BASEDIR}/conf.d/*.sh ; do
+  . ${i}
+done
+
 REDEPLOY_USING_HOOK='hooks/dehydrated-bigip-deploy-traffic-certificate'
 
 unchanged_cert() {
