@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # pull in conf.d files
 for i in ${BASEDIR}/conf.d/*.sh ; do
