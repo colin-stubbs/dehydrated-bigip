@@ -208,7 +208,7 @@ NSUPDATE_SERVER_LIST='203.0.113.0'
 WARNING: dehydrated-bigip does not yet support configuring OCSP stapling correctly... will be added soon. In the mean time DO NOT set OCSP_MUST_STAPLE='yes'
 
 ```
-[root@c01 ~]# cat /etc/dehydrated/config_dns-01 | grep -v -e ^# -e ^$
+[user@box ~]# cat /etc/dehydrated/config_dns-01 | grep -v -e ^# -e ^$
 CA="https://acme-v01.api.letsencrypt.org/directory"
 CA_TERMS="https://acme-v01.api.letsencrypt.org/terms"
 CHALLENGETYPE="dns-01"
@@ -223,7 +223,7 @@ CONTACT_EMAIL=security@domain.tld
 LOCKFILE="/run/dehydrated/lock"
 OCSP_MUST_STAPLE="no"
 AUTO_CLEANUP="yes"
-[root@c01 ~]#
+[user@box ~]#
 ```
 
 ### Example Usage ###
