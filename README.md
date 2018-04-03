@@ -2,7 +2,7 @@
 
 ## Summary ##
 
-"dehydrated-bigip" is a hook for "dehydrated", which is a Let's Encrypt client written entirely in Bash shell.
+"dehydrated-bigip" is a hook for "[dehydrated](https://github.com/lukas2511/dehydrated)", which is a Let's Encrypt client written entirely in Bash shell.
 
 "dehydrated-bigip" uses the BIG-IP iControl REST API for all interaction with BIG-IP systems; no SSH or iControl SOAP API.
 
