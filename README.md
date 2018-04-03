@@ -10,6 +10,10 @@ This provides automation for ACME based challenge validation via and certificate
 
 HTTP-01 and DNS-01 based validation processes can both be used; but are supported using different hook scripts.
 
+Recently tested with BIG-IP versions:
+* VE, 13.1.0.3.0.0.5
+* VE, 13.0.0.2.0.1671
+
 ## HTTP-01 for BIG-IP Traffic Certificates/Keys ##
 
 "dehydrated-bigip-http-01" implements all HTTP-01 based validation functions on a BIG-IP system. You would typically use this for traffic certificates, e.g. certificates are used as part of Client/Server SSL profiles on virtual servers, it cannot be used for BIG-IP management interface certificates.
