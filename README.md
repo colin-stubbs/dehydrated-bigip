@@ -86,7 +86,7 @@ This is simply "proxied" to "dehydrated-bigip-deploy-management-certificate" usi
 
 This is useful to trigger re-deployment of certs/keys to BIG-IP's that may not have them already.
 
-## How do I get set up? ##
+## How do I get it set up and doing something useful ? ##
 
 ### Summary ###
 
@@ -157,6 +157,34 @@ LEXICON_ARGS='--auth-username %{REMOVED}% --auth-token %{REMOVED}%'
 
 # EOF
 ````
+
+## How do I ensure it's all automated and I never have to think about this again? ##
+
+Errr... good luck with that pipe dream. Everything needs maintenance.
+
+But start by creating a cron task to run dehydrated periodically. You'll need several different commands depending on which groups of certs you want to get and deploy to various BIG-IP's.
+
+Example:
+
+```
+# /etc/cron.d/dehydrated
+#
+# Automates certificate renewal and deployment using Let's Encrypt via dehydrated
+#
+# traffic certificates which are currently deployed to all BIG-IP's.
+# the config file in thise case points to the correct hook or hook chain to use
+10 1 * * 3 root test -s /etc/dehydrated/config && test -s /etc/dehydrated/domains.txt && /usr/bin/dehydrated --cron
+
+# management certificates which are currently explicitly named and deployed to a single BIG-IP at a time
+
+# bigip1.domain.tld cert
+20 1 * * 3 root test -s /etc/dehydrated/hooks/dehydrated-bigip-dns-01-management-certificate && dehydrated --cron --domain bigip1.domain.tld --hook /etc/dehydrated/hooks/dehydrated-bigip-dns-01-management-certificate
+
+# bigip2.domain.tld cert
+25 1 * * 3 root test -s /etc/dehydrated/hooks/dehydrated-bigip-dns-01-management-certificate && dehydrated --cron --domain bigip2.domain.tld --hook /etc/dehydrated/hooks/dehydrated-bigip-dns-01-management-certificate
+
+# EOF
+```
 
 ## Dependencies ##
 
