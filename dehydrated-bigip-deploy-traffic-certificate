@@ -218,27 +218,30 @@ uploadFile() {
   FILENAME=`basename ${1}`
   CHUNK_SIZE=$((512 * 1024))
   FILESIZE=`stat -L -c%s ${1}`
-  TMP_FILESIZE=0
+  CHUNKS=$((${FILESIZE} / ${CHUNK_SIZE}))
+
+  if [ $((${CHUNKS} * ${CHUNK_SIZE})) -lt ${FILESIZE} ] ; then
+    CHUNKS=$((${CHUNKS} + 1))
+  fi
+
   BYTES_START=0
-  TMP_FILE=`mktemp`
 
   if [ ${FILESIZE} -le ${CHUNK_SIZE} ] ; then
     OUT=$(/bin/bash -c "${CURL} -s --insecure -X POST --data-binary '@${1}' --user '${BIGIP_USERNAME}:${BIGIP_PASSWORD}' -H 'Content-Type: application/octet-stream' -H 'Content-Range: ${BYTES_START}-$((${FILESIZE} - 1))/${FILESIZE}' 'https://${BIGIP_DEVICE}/mgmt/shared/file-transfer/uploads/${2}'")
     log "${CURL} -s --insecure -X POST --data-binary '@${1}' --user '${BIGIP_USERNAME}:${BIGIP_PASSWORD}' -H 'Content-Type: application/octet-stream' -H 'Content-Range: ${BYTES_START}-$((${FILESIZE} - 1))/${FILESIZE}' 'https://${BIGIP_DEVICE}/mgmt/shared/file-transfer/uploads/${2}'"
   else
     TMP_FILE=`mktemp`
-    while [ ${BYTES_START} -le ${FILESIZE} ] ; do
+    COUNT=0
+    while [ ${COUNT} -lt ${CHUNKS} ] ; do
+      BYTES_START=$((${COUNT} * ${CHUNK_SIZE}))
+      echo "CHUNK #${COUNT}"
       echo -n '' > ${TMP_FILE}
-      dd if="${1}" skip=${BYTES_START} bs=${CHUNK_SIZE} count=1 of="${TMP_FILE}"
+      dd if="${1}" ibs=${CHUNK_SIZE} skip=${COUNT} bs=${CHUNK_SIZE} count=1 of="${TMP_FILE}" 1>/dev/null 2>&1
       TMP_FILESIZE=`stat -L -c%s ${TMP_FILE}`
-      if [ $((${BYTES_START} + ${CHUNK_SIZE})) -gt ${TMP_FILESIZE} ] ; then
-        BYTES_END=${FILESIZE}
-      else
-        BYTES_END=$((${BYTES_START} + ${TMP_FILESIZE}))
-      fi
+      BYTES_END=$((${BYTES_START} + ${TMP_FILESIZE} - 1))
       OUT=$(/bin/bash -c "${CURL} -s --insecure -X POST --data-binary '@${TMP_FILE}' --user '${BIGIP_USERNAME}:${BIGIP_PASSWORD}' -H 'Content-Type: application/octet-stream' -H 'Content-Range: ${BYTES_START}-$((${BYTES_END} - 1))/${FILESIZE}' 'https://${BIGIP_DEVICE}/mgmt/shared/file-transfer/uploads/${2}'")
-      log "${CURL} -s --insecure -X POST --data-binary '@${TMP_FILE}' --user '${BIGIP_USERNAME}:${BIGIP_PASSWORD}' -H 'Content-Type: application/octet-stream' -H 'Content-Range: ${BYTES_START}-$((${BYTES_END} - 1))/${FILESIZE}' 'https://${BIGIP_DEVICE}/mgmt/shared/file-transfer/uploads/${2}'"
-      BYTES_START=${BYTES_END}
+      log "${CURL} -v --insecure -X POST --data-binary '@${TMP_FILE}' --user '${BIGIP_USERNAME}:${BIGIP_PASSWORD}' -H 'Content-Type: application/octet-stream' -H 'Content-Range: ${BYTES_START}-$((${BYTES_END} - 1))/${FILESIZE}' 'https://${BIGIP_DEVICE}/mgmt/shared/file-transfer/uploads/${2}'"
+      COUNT=$((${COUNT} + 1))
     done
   fi
 
