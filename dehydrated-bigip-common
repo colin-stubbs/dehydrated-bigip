@@ -289,7 +289,7 @@ uploadFile() {
     COUNT=0
     while [ ${COUNT} -lt ${CHUNKS} ] ; do
       BYTES_START=$((${COUNT} * ${CHUNK_SIZE}))
-      echo "CHUNK #${COUNT}"
+      # echo "CHUNK #${COUNT}"
       echo -n '' > ${TMP_FILE}
       dd if="${1}" ibs=${CHUNK_SIZE} skip=${COUNT} bs=${CHUNK_SIZE} count=1 of="${TMP_FILE}" 1>/dev/null 2>&1
       TMP_FILESIZE=`stat -L -c%s ${TMP_FILE}`
