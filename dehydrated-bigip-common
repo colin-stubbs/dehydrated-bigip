@@ -282,8 +282,8 @@ uploadFile() {
   BYTES_START=0
 
   if [ ${FILESIZE} -le ${CHUNK_SIZE} ] ; then
-    OUT=$(/bin/bash -c "${CURL} -s --insecure -X POST --data-binary '@${1}' --user '${BIGIP_USERNAME}:${BIGIP_PASSWORD}' -H 'Content-Type: application/octet-stream' -H 'Content-Range: ${BYTES_START}-$((${FILESIZE} - 1))/${FILESIZE}' 'https://${BIGIP_DEVICE}/mgmt/shared/file-transfer/uploads/${2}'")
-    log "${CURL} -s --insecure -X POST --data-binary '@${1}' --user '${BIGIP_USERNAME}:${BIGIP_PASSWORD}' -H 'Content-Type: application/octet-stream' -H 'Content-Range: ${BYTES_START}-$((${FILESIZE} - 1))/${FILESIZE}' 'https://${BIGIP_DEVICE}/mgmt/shared/file-transfer/uploads/${2}'"
+    OUT=$(/bin/bash -c "${CURL} -s --insecure -X POST --data-binary '@${1}' --user '${BIGIP_USERNAME}:${BIGIP_PASSWORD}' -H 'Content-Type: application/octet-stream' -H 'Content-Range: ${BYTES_START}-$((${FILESIZE} - 1))/${FILESIZE}' 'https://${BIGIP_DEVICE}/mgmt/shared/file-transfer/uploads/${DEST_FILENAME}'")
+    log "${CURL} -s --insecure -X POST --data-binary '@${1}' --user '${BIGIP_USERNAME}:${BIGIP_PASSWORD}' -H 'Content-Type: application/octet-stream' -H 'Content-Range: ${BYTES_START}-$((${FILESIZE} - 1))/${FILESIZE}' 'https://${BIGIP_DEVICE}/mgmt/shared/file-transfer/uploads/${DEST_FILENAME}'"
   else
     TMP_FILE=`mktemp`
     COUNT=0
@@ -294,8 +294,8 @@ uploadFile() {
       dd if="${1}" ibs=${CHUNK_SIZE} skip=${COUNT} bs=${CHUNK_SIZE} count=1 of="${TMP_FILE}" 1>/dev/null 2>&1
       TMP_FILESIZE=`stat -L -c%s ${TMP_FILE}`
       BYTES_END=$((${BYTES_START} + ${TMP_FILESIZE} - 1))
-      OUT=$(/bin/bash -c "${CURL} -s --insecure -X POST --data-binary '@${TMP_FILE}' --user '${BIGIP_USERNAME}:${BIGIP_PASSWORD}' -H 'Content-Type: application/octet-stream' -H 'Content-Range: ${BYTES_START}-${BYTES_END}/${FILESIZE}' 'https://${BIGIP_DEVICE}/mgmt/shared/file-transfer/uploads/${2}'")
-      log "${CURL} -v --insecure -X POST --data-binary '@${TMP_FILE}' --user '${BIGIP_USERNAME}:${BIGIP_PASSWORD}' -H 'Content-Type: application/octet-stream' -H 'Content-Range: ${BYTES_START}-${BYTES_END}/${FILESIZE}' 'https://${BIGIP_DEVICE}/mgmt/shared/file-transfer/uploads/${2}'"
+      OUT=$(/bin/bash -c "${CURL} -s --insecure -X POST --data-binary '@${TMP_FILE}' --user '${BIGIP_USERNAME}:${BIGIP_PASSWORD}' -H 'Content-Type: application/octet-stream' -H 'Content-Range: ${BYTES_START}-${BYTES_END}/${FILESIZE}' 'https://${BIGIP_DEVICE}/mgmt/shared/file-transfer/uploads/${DEST_FILENAME}'")
+      log "${CURL} -v --insecure -X POST --data-binary '@${TMP_FILE}' --user '${BIGIP_USERNAME}:${BIGIP_PASSWORD}' -H 'Content-Type: application/octet-stream' -H 'Content-Range: ${BYTES_START}-${BYTES_END}/${FILESIZE}' 'https://${BIGIP_DEVICE}/mgmt/shared/file-transfer/uploads/${DEST_FILENAME}'"
       COUNT=$((${COUNT} + 1))
     done
   fi
