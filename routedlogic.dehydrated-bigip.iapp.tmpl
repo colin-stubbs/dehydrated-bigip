@@ -1,0 +1,104 @@
+#TMSH-VERSION: 13.1.0.8
+
+cli admin-partitions {
+    update-partition Common
+}
+sys application template /Common/routedlogic.dehydrated-bigip.v0.0.1 {
+    actions {
+        definition {
+            html-help {
+            }
+            implementation {
+                set app $tmsh::app_name
+
+set partition "/[lindex [split [tmsh::pwd] /] 1]"
+set partition_name "[lindex [split [tmsh::pwd] /] 1]"
+
+if { $partition == "/" } {
+   puts "Warning: behaviour not well defined when @partition is \"/\""
+   set defaultrd 0
+} else {
+   set obj [tmsh::get_config auth partition $partition_name default-route-domain]
+   set defaultrd [tmsh::get_field_value [lindex $obj 0] default-route-domain]
+}
+
+set http01_validation_irule {ltm rule ACME-HTTP-01-Validation {
+  when RULE_INIT {
+    set static::http-01_validator_class {__HTTP01_DATA_CLASS_NAME__}
+  }
+  when HTTP_REQUEST {
+    if { [string tolower [HTTP::uri]] starts_with {/.well-known/acme-challenge/}
+      and [class match [HTTP::uri] ends_with ${static::http-01_validator_class}] != {} } {
+      set response_content [class lookup [substr [HTTP::uri] 28] ${static::http-01_validator_class}]
+      if { ${response_content} != {} } {
+        HTTP::respond 200 -version auto content [class lookup [substr [HTTP::uri] 28] ${static::http-01_validator_class}]
+      } else {
+        HTTP::respond 503 -version auto content {<html><body><h1>503 - Errorz!</h1><p>soz content not here!</body></html>}
+      }
+      unset response_content
+    }
+  }
+}
+}
+
+set cfg [string map "@service_folder $tmsh::app_name.app @partition $partition @defaultrd $defaultrd __app_service__ $tmsh::app_name.app/$tmsh::app_name __HTTP01_DATA_CLASS_NAME__ {${::http01_validation__HTTP01_DATA_CLASS_NAME}}" ${http01_validation_irule}]
+
+set fileId [open /var/tmp/${app}-merge.cfg "w"]
+puts -nonewline ${fileId} ${cfg}
+close ${fileId}
+
+tmsh::load sys config merge file /var/tmp/${app}-merge.cfg
+            }
+            macro {
+            }
+            presentation {
+                include "/Common/f5.apl_common"
+
+### CHOICES ###
+define choice INLINE_HELP display "xxlarge" default "max" {
+  "Yes, show inline help" => "max",
+  "No, do not show inline help" => "hide"
+}
+define choice HTTP01_USE display "xxlarge" default "yes" {
+  "Yes" => "yes",
+  "No" => "no"
+}
+
+### SECTIONS ###
+section introduction {
+  message INTRODUCTION "Use this template to configure BIG-IP with Let's Encrypt."
+  INLINE_HELP INLINE_HELP_CHOICE
+}
+section http01_validation {
+  message HTTP01_HELP_INTRO "If you want or need to use HTTP-01 based validation this section will help you configure the required supporting BIG-IP objects."
+  HTTP01_USE HTTP01_USE_CHOICE
+  optional ( HTTP01_USE_CHOICE == "yes" ) {
+    string HTTP01_DATA_CLASS_NAME display "xxlarge" default "ACME_HTTP01_VALIDATION"
+  }
+}
+
+### TEXT DISPLAY ###
+text {
+  introduction "Welcome to the F5 Let's Encrypt Integration iApp"
+  introduction.INTRODUCTION "Introduction"
+  introduction.INLINE_HELP_CHOICE "Do you want to see inline help?"
+
+  http01_validation "HTTP-01 Validation Configuration"
+  http01_validation.HTTP01_HELP_INTRO ""
+  http01_validation.HTTP01_USE_CHOICE "Do you want to use HTTP-01 based validation?"
+  http01_validation.HTTP01_DATA_CLASS_NAME "What unique Data Class (Data Group) name would you like to use? Leave as default if unsure."
+}
+            }
+            role-acl none
+            run-as none
+        }
+    }
+    description none
+    ignore-verification false
+    requires-bigip-version-max none
+    requires-bigip-version-min 11.0.0
+    requires-modules { ltm }
+    signing-key /Common/colin-stubbs-bigip-objects.key
+    tmpl-checksum none
+    tmpl-signature H0aKKo70krtw8XD/RHCaUN03u1zg6ck6um7FJCIxGEwWhYizKerVA9CT7m1KQDMOFn3zLJWnGuB2pOJAFRz0oqmCYAHMGMklkcws8q6DwY2I/QVlBAxUVH/WtNuTPiO8pifewysZWDASKvZwfahBwF0JzhueZdJH/NJa2YW2wZdPyg7MzdhRX8OKx7we6Zi7YqBkImUZVij6eMCjD4hdIM4xo4ccAtb3WTYMUHa+39ksQMpNjQ9VZ4AUEXS9/he1eRngbFZwDicgW8auepM6P4XQLtaleZiqHIn9ZhxC7LaRmG9yFILhoWUzq4JAtQLMup/NLFKShBE/inBNjJffRP0swefNKG+9thYr2CfFfiG53N49/rkOUT1E7idd7nGh0zv7EVyJvotENUgv3aQcjVJxUSqp9yHFZbVF/8QBhWSbikg785Pi/tlm9pqm4zriniHyNAkXVwh4Tk2I7PozbJ9wLlN/SC9ml9G7Z6GWCpyuc147JxwnG37sWc4iYnqjC8eP/ThDxt0FeGagV142kpICZc7OT/QcFk8zOzibv11B6LDubp0MM+uMBwdCE1X8iw3H6QR8KgAqbPb1J/JJ7tYE4q5WuPzdVwi/1alZDfJyo0agXmzaytB91zbDanPDwHDrJ+TjId8phL16Bp+FtHWz0ZWf3keOvPHdDANpupA=
+}
