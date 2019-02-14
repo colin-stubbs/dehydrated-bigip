@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+
+# pull in conf.d files
+for i in ${BASEDIR}/conf.d/*.sh ; do
+  . ${i}
+done
+
+# pull in common functions
+. ${BASEDIR}/hooks/dehydrated-bigip-common
+
+
+## Programs
+CURL="/usr/bin/curl"
+LOGFILE=${LOGFILE:-'/var/log/dehydrated-bigip-deploy-traffic-certificate.log'}
+
+# Space seperated list of IP addresses or hostnames to BIG-IP management interfaces
+BIGIP_DEVICE_LIST=${BIGIP_DEVICE_LIST:-'192.168.1.245'}
+# Username to access BIG-IP iControl REST API
+BIGIP_USERNAME=${BIGIP_USERNAME:-'admin'}
+# Password for user to access BIG-IP iControl REST API
+BIGIP_PASSWORD=${BIGIP_PASSWORD:-'admin'}
+# Partition to configure SSL profiles within
+BIGIP_PARTITION=${BIGIP_PARTITION:-'Common'}
+# Client SSL profile to use as parent for newly created or updated profiles
+BIGIP_CLIENT_SSL_MANAGE=${BIGIP_CLIENT_SSL_MANAGE:-1}
+# Client SSL profile to use as parent for newly created or updated profiles
+BIGIP_CLIENT_SSL_PARENT=${BIGIP_CLIENT_SSL_PARENT:-'clientssl'}
+# if 1 use the certificate timestamp as part of certificate name when installed
+TIMESTAMP_NAME=${TIMESTAMP_NAME:-0}
+# OCSP stapling profile to utilise if OCSP_STAPLE="1"
+OCSP_STAPLING_PROFILE=${OCSP_STAPLING_PROFILE:-''}
+# if 1 enable OCSP stapling
+OCSP_STAPLE=${OCSP_STAPLE:-1}
+# if 1 save config after changes, e.g. equivalent to tmsh save sys config
+BIGIP_SAVE_CONFIG=${BIGIP_SAVE_CONFIG:-1}
+
+#Only Used for NSUPDATE
+NSUPDATE=${NSUPDATE:-'nsupdate'}
+NSUPDATE_ARGS=${NSUPDATE_ARGS:-''}
+NSUPDATE_SERVER_LIST=${NSUPDATE_SERVER_LIST:-''}
+NSUPDATE_RECORD_DEFAULT_TTL=${NSUPDATE_RECORD_DEFAULT_TTL:-'300'}
+
+#Only used for Lexicon
+LEXICON_PROVIDER=${LEXICON_PROVIDER:-'cloudflare'}
+LEXICON_ARGS=${LEXICON_ARGS:-''}
+
+# Initial Curl connection timeout value in seconds.
+TIMEOUT=${TIMEOUT:-5}
+## Maximum time for an API call to return. Depending on what you are doing,
+##  this value should be quite large as some calls take a long time to
+##  complete!  Testing your script should provide you with a good ideal
+##  about what is too long.  I usually start at 120 seconds and go up from there.
+MAXTIMEOUT=${MAXTIMEOUT:-120}
+

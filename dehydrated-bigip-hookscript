@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+#Combination of all used scripts for the BIGIP letsencrypt deployment
+#Set the methods you use here to combine them into one Hook (HTTP Verification, DNS Verification, Cert deployment...)
+#22/01/2019 APXDD Sander Eerdekens
+
+
+#Load common functions
+#Do not comment this line
+. ${BASEDIR}/hooks/dehydrated-bigip-common
+
+
+#(un)comment here, based on what validation and deployment you need here
+
+
+#Validation
+# Hook for automatic HTTP-01 challenge deployment on BIG-IP
+. ${BASEDIR}/hooks/dehydrated-bigip-http-01 "$@"  
+# Hook for automatic DNS challenge deployment with Lexicon
+#. ${BASEDIR}/hooks/dehydrated-lexicon "$@"
+# Hook for automatic DNS challenge deployment with NSUpdate
+#. ${BASEDIR}/hooks/dehydrated-nsupdate "$@"
+
+
+
+# Hook to (re)deploy SSL certificate
+#. ${BASEDIR}/hooks/dehydrated-bigip-redeploy-traffic-certificate "$@" 
+#Hook to deploy new SSL certificates
+. ${BASEDIR}/hooks/dehydrated-bigip-deploy-traffic-certificate_rewritten "$@"
+#Hook to deploy new Management certificates
+#. ${BASEDIR}/hooks/dehydrated-bigip-deploy-management-certificate "$@"
+#Hook to (re)deploy Management certificates
+#. ${BASEDIR}/hooks/dehydrated-bigip-redeploy-management-certificate "$@"

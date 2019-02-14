@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # dehydrated-bigip-common
 #
 # Common functions used in other dehydrated BIG-IP scripts
@@ -67,6 +68,21 @@ whenAvailable() {
     fi
   done
 }
+
+#-------------------------------------------------------
+# Function: isActive()
+#   Tests to see if BIGIP is Active in HA cluster.
+#-------------------------------------------------------
+isActive() {
+  OUT=$(restCall "GET" "/tm/cm/failover-status")
+  log "isActive():`echo $OUT`"
+  if [[ $(echo $OUT | jsonq '["entries"]["https://localhost/mgmt/tm/cm/failover-status/0"]["nestedStats"]["entries"]["status"]["description"]') == ACTIVE ]]; then
+    return 0
+  else
+    return 1
+  fi
+}
+
 
 #-------------------------------------------------------
 # Function: restCall()
@@ -311,7 +327,125 @@ uploadFile() {
   return 0
 }
 
-deploy_cert() {
+deploy_traffic_cert() {
+    local DOMAIN="${1}" KEYFILE="${2}" CERTFILE="${3}" FULLCHAINFILE="${4}" CHAINFILE="${5}" TIMESTAMP="${6}" BIGIP_DEVICE="${7}"
+
+    if [ "${TIMESTAMP}x" != "x" ] && [ "${BIGIP_DEVICE}x" == "x" ] ; then
+      BIGIP_DEVICE=${TIMESTAMP}
+      TIMESTAMP="UNKNOWN"
+    fi
+
+    # This hook is called once for each certificate that has been
+    # produced. Here you might, for instance, copy your new certificates
+    # to service-specific locations and reload the service.
+    #
+    # Parameters:
+    # - DOMAIN
+    #   The primary domain name, i.e. the certificate common
+    #   name (CN).
+    # - KEYFILE
+    #   The path of the file containing the private key.
+    # - CERTFILE
+    #   The path of the file containing the signed certificate.
+    # - FULLCHAINFILE
+    #   The path of the file containing the full certificate chain.
+    # - CHAINFILE
+    #   The path of the file containing the intermediate certificate(s).
+
+    echo "NOTE: Deploying certs to F5 BIG-IP ${BIGIP_DEVICE} (${DOMAIN}#${KEYFILE}#${CERTFILE}#${FULLCHAINFILE}#${CHAINFILE})"
+
+    if [ "${TIMESTAMP_NAME}x" == "1x" ] && [ "${TIMESTAMP}x" != "x" ] ; then
+      CERTFILE_NAME="${DOMAIN}-${TIMESTAMP}.crt"
+      KEYFILE_NAME="${DOMAIN}-${TIMESTAMP}.key"
+      FULLCHAINFILE_NAME="${DOMAIN}-${TIMESTAMP}-FULLCHAIN.crt"
+      CHAINFILE_NAME="${DOMAIN}-${TIMESTAMP}-CHAIN.crt"
+    else
+      CERTFILE_NAME="${DOMAIN}.crt"
+      KEYFILE_NAME="${DOMAIN}.key"
+      FULLCHAINFILE_NAME="${DOMAIN}-FULLCHAIN.crt"
+      CHAINFILE_NAME="${DOMAIN}-CHAIN.crt"
+    fi
+
+    if [ -r ${CERTFILE} ] ; then
+        OUT=$(uploadFile ${CERTFILE} ${DOMAIN}.crt)
+        if ! $OUT; then
+          echo "Error: Certificate for ${DOMAIN} was not uploaded correctly!"
+          exit 1
+        fi
+
+        OUT=$(createCertFromUpload ${CERTFILE_NAME} ${DOMAIN}.crt)
+        if ! $OUT; then
+          echo "Error: Certificate for ${DOMAIN} was not created correctly!"
+          exit 1
+        fi
+    else
+        echo "Error: File ${CERTFILE} does not exist or is unreadable!"
+        exit 1
+    fi
+
+    if [ -r ${KEYFILE} ] ; then
+        OUT=$(uploadFile ${KEYFILE} ${DOMAIN}.key)
+        if ! $OUT; then
+          echo "Error: Certificate for ${DOMAIN} was not uploaded correctly!"
+        fi
+
+        OUT=$(createKeyFromUpload ${KEYFILE_NAME} ${DOMAIN}.key)
+        if ! $OUT; then
+          echo "Error: Certificate for ${DOMAIN} was not created correctly!"
+        fi
+    else
+        echo "Error: File ${KEYFILE} does not exist or is unreadable!"
+        exit 1
+    fi
+
+    if [ -r ${FULLCHAINFILE} ] ; then
+        OUT=$(uploadFile ${FULLCHAINFILE} ${DOMAIN}-FULLCHAIN.crt)
+        if ! $OUT; then
+          echo "Error: Certificate for ${DOMAIN} was not uploaded correctly!"
+        fi
+
+        OUT=$(createCertFromUpload ${FULLCHAINFILE_NAME} ${DOMAIN}-FULLCHAIN.crt)
+        if ! $OUT; then
+          echo "Error: Certificate for ${DOMAIN} was not created correctly!"
+        fi
+    else
+        echo "Error: File ${FULLCHAINFILE} does not exist or is unreadable!"
+        exit 1
+    fi
+
+    if [ -r ${CHAINFILE} ] ; then
+        OUT=$(uploadFile ${CHAINFILE} ${DOMAIN}-CHAIN.crt)
+        if ! $OUT; then
+          echo "Error: Certificate for ${DOMAIN} was not uploaded correctly!"
+        fi
+
+        OUT=$(createCertFromUpload ${CHAINFILE_NAME} ${DOMAIN}-CHAIN.crt)
+        if ! $OUT; then
+          echo "Error: Certificate for ${DOMAIN} was not created correctly!"
+        fi
+    else
+        echo "Error: File ${CHAINFILE} does not exist or is unreadable!"
+        exit 1
+    fi
+
+    # Enable OCSP Stapling on certs
+    # TBC
+
+    # Create ClientSSL certificate
+    # Read SAN's from certificate
+    if test -r "${CERTFILE}" ; then
+      SAN_LIST=`openssl x509 -in ${CERTFILE} -text | awk '/X509v3 Subject Alternative Name/ {getline;gsub(/ /, "", $0);gsub(/,/, " ", $0);gsub(/DNS:/, "", $0); print}'`
+      NAME_LIST=`for i in ${DOMAIN} ${SAN_LIST} ; do echo ${i} ; done | sort -u | grep -v -E -e '^[0-9]{1,3}\.^[0-9]{1,3}\.^[0-9]{1,3}\.^[0-9]{1,3}$' -`
+      for SERVER_NAME in ${PRIMARY_DOMAIN} ${SAN_LIST} ; do
+        CLIENTSSL_NAME="${SERVER_NAME}"
+
+        echo "Creating Client SSL profile ${CLIENTSSL_NAME} for ${SERVER_NAME} from ${CERTFILE}"
+        OUT=$(createClientSSLProfile ${CLIENTSSL_NAME} ${BIGIP_CLIENT_SSL_PARENT} ${BIGIP_PARTITION} ${CERTFILE_NAME} ${KEYFILE_NAME} ${CHAINFILE_NAME} ${SERVER_NAME})
+      done
+    fi
+}
+
+deploy_mgmt_cert() {
     local DOMAIN="${1}" KEYFILE="${2}" CERTFILE="${3}" FULLCHAINFILE="${4}" CHAINFILE="${5}" TIMESTAMP="${6}" BIGIP_DEVICE="${7}"
 
     if [ "${TIMESTAMP}x" != "x" ] && [ "${BIGIP_DEVICE}x" == "x" ] ; then

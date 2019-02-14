@@ -1,15 +1,22 @@
 #!/usr/bin/env bash
 
-# pull in conf.d files
-for i in ${BASEDIR}/conf.d/*.sh ; do
-  . ${i}
-done
+# pull in common functions
+. ${BASEDIR}/hooks/dehydrated-bigip-common
+# pull in config
+. ${BASEDIR}/hooks/dehydrated-bigip-loadconfig
 
-REDEPLOY_USING_HOOK='hooks/dehydrated-bigip-deploy-traffic-certificate'
+# dehydrated hooks
 
 unchanged_cert() {
+  echo "entering unchanged_cert()"
   for BIGIP_DEVICE in ${BIGIP_DEVICE_LIST} ; do
-    ${BASEDIR}/${REDEPLOY_USING_HOOK} deploy_cert $@ ${BIGIP_DEVICE}
+	echo "check if ${BIGIP_DEVICE} is Active in cluster";
+	if isActive ; then
+	  echo "Active device, Redeploy cert $@  on ${BIGIP_DEVICE}"
+      deploy_traffic_cert $@ ${BIGIP_DEVICE}
+	else
+      echo "Device ${BIGIP_DEVICE} is passive in cluster, skip cert deployment"
+    fi
   done
 }
 

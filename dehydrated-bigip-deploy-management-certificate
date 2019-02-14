@@ -1,114 +1,23 @@
 #!/usr/bin/env bash
 
-# pull in conf.d files
-for i in ${BASEDIR}/conf.d/*.sh ; do
-  . ${i}
-done
-
 # pull in common functions
 . ${BASEDIR}/hooks/dehydrated-bigip-common
-
-## Programs
-CURL="/usr/bin/curl"
-LOGFILE=${LOGFILE:-'/var/log/dehydrated-bigip-deploy-management-certificate.log'}
-
-# Username to access BIG-IP iControl REST API
-BIGIP_USERNAME=${BIGIP_USERNAME:-'admin'}
-# Password for user to access BIG-IP iControl REST API
-BIGIP_PASSWORD=${BIGIP_PASSWORD:-'admin'}
-# if 1 use the certificate timestamp as part of certificate name when installed
-TIMESTAMP_NAME=${TIMESTAMP_NAME:-0}
-# if 1 enable OCSP stapling
-OCSP_STAPLE=${OCSP_STAPLE:-1}
-# if 1 save config after changes, e.g. equivalent to tmsh save sys config
-BIGIP_SAVE_CONFIG=${BIGIP_SAVE_CONFIG:-1}
-
-# Initial Curl connection timeout value in seconds.
-TIMEOUT=${TIMEOUT:-5}
-## Maximum time for an API call to return. Depending on what you are doing,
-##  this value should be quite large as some calls take a long time to
-##  complete!  Testing your script should provide you with a good ideal
-##  about what is too long.  I usually start at 120 seconds and go up from there.
-MAXTIMEOUT=${MAXTIMEOUT:-120}
+# pull in config
+. ${BASEDIR}/hooks/dehydrated-bigip-loadconfig
 
 # dehydrated hooks
 
 deploy_cert() {
-    local DOMAIN="${1}" KEYFILE="${2}" CERTFILE="${3}" FULLCHAINFILE="${4}" CHAINFILE="${5}" TIMESTAMP="${6}" BIGIP_DEVICE="${7}"
-
-    if [ "${TIMESTAMP}x" != "x" ] && [ "${BIGIP_DEVICE}x" == "x" ] ; then
-      BIGIP_DEVICE=${TIMESTAMP}
-      TIMESTAMP="UNKNOWN"
-    fi
-
-    # This hook is called once for each certificate that has been
-    # produced. Here you might, for instance, copy your new certificates
-    # to service-specific locations and reload the service.
-    #
-    # Parameters:
-    # - DOMAIN
-    #   The primary domain name, i.e. the certificate common
-    #   name (CN).
-    # - KEYFILE
-    #   The path of the file containing the private key.
-    # - FULLCHAINFILE
-    #   The path of the file containing the full certificate chain.
-
-    echo "NOTE: Deploying management interface certs and key to F5 BIG-IP (${DOMAIN}#${KEYFILE}#${FULLCHAINFILE})"
-
-    if [ "${TIMESTAMP_NAME}x" == "1x" ] && [ "${TIMESTAMP}x" != "x" ] ; then
-      CERTFILE_NAME="${DOMAIN}-${TIMESTAMP}.crt"
-      KEYFILE_NAME="${DOMAIN}-${TIMESTAMP}.key"
-      FULLCHAINFILE_NAME="${DOMAIN}-${TIMESTAMP}-FULLCHAIN.crt"
-      CHAINFILE_NAME="${DOMAIN}-${TIMESTAMP}-CHAIN.crt"
+  echo "entering deploy_cert()"
+  for BIGIP_DEVICE in ${BIGIP_DEVICE_LIST} ; do
+    echo "check if ${BIGIP_DEVICE} is Active in cluster";
+    if isActive ; then
+      echo "Active device, deploy cert $@  on ${BIGIP_DEVICE}"
+      deploy_mgmt_cert $@ ${BIGIP_DEVICE}
     else
-      CERTFILE_NAME="${DOMAIN}.crt"
-      KEYFILE_NAME="${DOMAIN}.key"
-      FULLCHAINFILE_NAME="${DOMAIN}-FULLCHAIN.crt"
-      CHAINFILE_NAME="${DOMAIN}-CHAIN.crt"
+      echo "Device ${BIGIP_DEVICE} is passive in cluster, skip cert deployment"
     fi
-
-    echo "NOTE: Uploading full certificate chain and key"
-
-    if [ -r ${KEYFILE} ] ; then
-        OUT=$(uploadFile ${KEYFILE} ${DOMAIN}.key)
-        if ! $OUT; then
-          echo "Error: Certificate for ${DOMAIN} was not uploaded correctly!"
-          exit 1
-        else
-          OUT=$(runBashCommand "cp /var/config/rest/downloads/${DOMAIN}.key /etc/httpd/conf/ssl.key/${DOMAIN}.key")
-        fi
-    else
-        echo "Error: File ${KEYFILE} does not exist or is unreadable!"
-        exit 1
-    fi
-
-    if [ -r ${FULLCHAINFILE} ] ; then
-        OUT=$(uploadFile ${FULLCHAINFILE} ${DOMAIN}-FULLCHAIN.crt)
-        if ! $OUT; then
-          echo "Error: Certificate for ${DOMAIN} was not uploaded correctly!"
-          exit 1
-        else
-          OUT=$(runBashCommand "cp /var/config/rest/downloads/${DOMAIN}-FULLCHAIN.crt /etc/httpd/conf/ssl.crt/${DOMAIN}.crt")
-        fi
-    else
-        echo "Error: File ${FULLCHAINFILE} does not exist or is unreadable!"
-        exit 1
-    fi
-
-    # cleanup upload files
-    OUT=$(runBashCommand "rm -fv /var/config/rest/downloads/${DOMAIN}.key /var/config/rest/downloads/${DOMAIN}-FULLCHAIN.crt")
-    echo "NOTE: Removed uploaded files ($OUT)"
-
-    # TODO add validation command to check all files are in place correctly before modifying httpd config
-
-    # modify httpd config
-    OUT=$(modifyHttpdCerts /etc/httpd/conf/ssl.crt/${DOMAIN}.crt /etc/httpd/conf/ssl.key/${DOMAIN}.key)
-    echo "NOTE: Modified httpd config ($OUT)"
-
-    # restart service to use new cert/key
-    OUT=$(restartService "httpd")
-    echo "NOTE: Restarted httpd service ($OUT)"
+  done
 }
 
 HANDLER="$1"; shift
