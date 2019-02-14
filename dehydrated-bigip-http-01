@@ -75,7 +75,7 @@ deleteFromDataGroup() {
     TT=""
   else
     # Re-format records; removing the record identified by ${2}
-    TT=$(echo $OUT | python -c "import sys,json; input=json.load(sys.stdin); tt=input[\"records\"]; print json.dumps(tt)" | sed -E -e "s/\{\"name\": \"${2}\", \"data\": \"[a-zA-Z0-9]*\"},* *//" -e "s/\{\"data\": \"[a-zA-Z0-9]*\", \"name\": \"${2}\"},* *//")
+    TT=$(echo $OUT | python -c "import sys,json; input=json.load(sys.stdin); tt=input[\"records\"]; print json.dumps(tt)" | sed -E -e "s/\{\"name\": \"${2}\", \"data\": \"[a-zA-Z0-9\.\-]*\"},* *//" -e "s/\{\"data\": \"[a-zA-Z0-9\.\-]*\", \"name\": \"${2}\"},* *//")
   fi
 
   log "deleteFromDataGroup()[Record Removed]: `echo \"{ \"records\": ${TT} }\"`"
