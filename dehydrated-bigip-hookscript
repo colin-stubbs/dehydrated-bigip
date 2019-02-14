@@ -25,7 +25,7 @@
 # Hook to (re)deploy SSL certificate
 #. ${BASEDIR}/hooks/dehydrated-bigip-redeploy-traffic-certificate "$@" 
 #Hook to deploy new SSL certificates
-. ${BASEDIR}/hooks/dehydrated-bigip-deploy-traffic-certificate_rewritten "$@"
+. ${BASEDIR}/hooks/dehydrated-bigip-deploy-traffic-certificate "$@"
 #Hook to deploy new Management certificates
 #. ${BASEDIR}/hooks/dehydrated-bigip-deploy-management-certificate "$@"
 #Hook to (re)deploy Management certificates
