@@ -12,8 +12,18 @@ unchanged_cert() {
   for BIGIP_DEVICE in ${BIGIP_DEVICE_LIST} ; do
 	echo "check if ${BIGIP_DEVICE} is Active in cluster";
 	if isActive ; then
-	  echo "Active device, Redeploy cert $@  on ${BIGIP_DEVICE}"
-      deploy_traffic_cert $@ ${BIGIP_DEVICE}
+	  echo "Active device, check if cert $@  is installed on ${BIGIP_DEVICE}"
+	  CERTFILE="${3}"
+	  CLIENTSSL_NAME="${1}"
+	  #Use Openssl to check the serial of the local cert, use sed to strip off "serial=" and convert to lowercase
+	  LOCALHASH=$(openssl x509 -in $CERTFILE -serial -noout |sed -E -s 's/serial=\(.*\)/\L\1/')
+	  REMOTEHASH=$(getCurrentCertSerialNumber $CLIENTSSL_NAME $BIGIP_PARTITION)
+	  if [ "$LOCALHASH" = "$REMOTEHASH" ]; then
+        echo "Certificate thumprint on F5 matches local one, no redeploy needed"
+	  else
+	    echo "Certificate thumprint not matching, our could not be retreived. Redeploy the certificate..."
+        deploy_traffic_cert $@ ${BIGIP_DEVICE}
+	  fi
 	else
       echo "Device ${BIGIP_DEVICE} is passive in cluster, skip cert deployment"
     fi
