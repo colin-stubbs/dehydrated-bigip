@@ -196,6 +196,10 @@ createCertFromUpload() {
   NAME="/${BIGIP_PARTITION}/${1}"
   OUT=$(restCall "POST" "/tm/sys/crypto/cert" "{ \"command\": \"install\", \"name\": \"${NAME}\", \"from-local-file\": \"/var/config/rest/downloads/${2}\" }")
   log "createCertFromUpload()[Write Back Results]: `echo $OUT | python -mjson.tool`"
+  if [ "`echo ${OUT} | grep 'key and certificate do not match'`x" != "x" ]; then
+	#Output returns certificate and key mismatch, return error 2
+	return 2
+  fi
   return 0
 }
 
@@ -219,7 +223,7 @@ ocspStapleCert() {
 createKeyFromUpload() {
   NAME="/${BIGIP_PARTITION}/${1}"
   OUT=$(restCall "POST" "/tm/sys/crypto/key" "{ \"command\": \"install\", \"name\": \"${NAME}\", \"from-local-file\": \"/var/config/rest/downloads/${2}\", \"securityType\": \"normal\" }")
-  log "createCertFromUpload()[Write Back Results]: `echo $OUT | python -mjson.tool`"
+  log "createKeyFromUpload()[Write Back Results]: `echo $OUT | python -mjson.tool`"
   return 0
 }
 
@@ -418,10 +422,26 @@ deploy_traffic_cert() {
         fi
 
         OUT=$(createCertFromUpload ${CERTFILE_NAME} ${DOMAIN}.crt)
-        if ! $OUT; then
+		case "$?" in
+		0)
+		  #Everything Okay, continue
+		  ;;
+		2)
+		  #Error returned in REST call, filename of cert/key probably exists already with other key, rename and try again
+          CERTFILE_NAME="${DOMAIN}_${TIMESTAMP}.crt"
+          KEYFILE_NAME="${DOMAIN}_${TIMESTAMP}.key"
+          FULLCHAINFILE_NAME="${DOMAIN}-FULLCHAIN_${TIMESTAMP}.crt"
+          CHAINFILE_NAME="${DOMAIN}-CHAIN_${TIMESTAMP}.crt"
+			
+          #Try uploading again with new filename
+          OUT=$(createCertFromUpload ${CERTFILE_NAME} ${DOMAIN}.crt)
+		  ;;
+		*)
           echo "Error: Certificate for ${DOMAIN} was not created correctly!"
           exit 1
-        fi
+		  ;;
+		esac
+			
     else
         echo "Error: File ${CERTFILE} does not exist or is unreadable!"
         exit 1
