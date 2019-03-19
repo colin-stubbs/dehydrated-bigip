@@ -16,7 +16,7 @@ unchanged_cert() {
 	  CERTFILE="${3}"
 	  CLIENTSSL_NAME="${1}"
 	  #Use Openssl to check the serial of the local cert, use sed to strip off "serial=" and convert to lowercase
-	  LOCALHASH=$(openssl x509 -in $CERTFILE -serial -noout |sed -E -s 's/serial=\(.*\)/\L\1/')
+	  LOCALHASH=$(openssl x509 -in $CERTFILE -serial -noout |sed -E -s 's/serial=//' | tr '[:upper:]' '[:lower:]')
 	  REMOTEHASH=$(getCurrentCertSerialNumber $CLIENTSSL_NAME $BIGIP_PARTITION)
 	  if [ "$LOCALHASH" = "$REMOTEHASH" ]; then
         echo "Certificate thumprint on F5 matches local one, no redeploy needed"
