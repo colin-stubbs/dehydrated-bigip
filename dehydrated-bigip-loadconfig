@@ -21,6 +21,8 @@ BIGIP_USERNAME=${BIGIP_USERNAME:-'admin'}
 BIGIP_PASSWORD=${BIGIP_PASSWORD:-'admin'}
 # Partition to configure SSL profiles within
 BIGIP_PARTITION=${BIGIP_PARTITION:-'Common'}
+# Partition to configure Datagroup within
+BIGIP_DATAGROUP_PARTITION=${BIGIP_DATAGROUP_PARTITION:-${BIGIP_PARTITION}}
 # Client SSL profile to use as parent for newly created or updated profiles
 BIGIP_CLIENT_SSL_MANAGE=${BIGIP_CLIENT_SSL_MANAGE:-1}
 # Client SSL profile to use as parent for newly created or updated profiles

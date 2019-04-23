@@ -271,7 +271,7 @@ createClientSSLProfile() {
 #-------------------------------------------------------
 getCurrentCertSerialNumber() {
   SSLPROFILE=$(restCall "GET" "/tm/ltm/profile/client-ssl/~${2}~${1}")
-  log "getClientSSLProfile() SSLPROFILE: $SSLPROFILE"
+  log "getCurrentCertSerialNumber() SSLPROFILE: $SSLPROFILE"
 
 
   if [ "`echo ${SSLPROFILE} | grep '"kind":"tm:ltm:profile:client-ssl:client-sslstate"'`x" != "x" ] ; then
@@ -279,16 +279,16 @@ getCurrentCertSerialNumber() {
     # Get the certificate from the SSL profile
 	#Get the certReference -> link property from the SSLClientProfile, and strip the hostname and /mgmt part of the link
     CERTLINK=$(echo $SSLPROFILE | jsonq '["certReference"]["link"]' | sed -E -s "s|https://[a-zA-Z0-9\-\.]*/mgmt/|/|" )
-	log "getClientSSLProfile() CERTLINK: $CERTLINK"
+	log "getCurrentCertSerialNumber() CERTLINK: $CERTLINK"
     
     if [ "`echo ${CERTLINK}x`" != "x" ] ; then
 	  #Certlink exits and is not empty
       CERT=$(restCall "GET" "$CERTLINK")
-      log "getClientSSLProfile() CERT: $CERT"
+      log "getCurrentCertSerialNumber() CERT: $CERT"
 	  
 	  if [ "`echo ${CERT} | grep '"kind":"tm:sys:file:ssl-cert:ssl-certstate"'`x" != "x" ] ; then
 	    SERIAL=$(echo $CERT | jsonq '["serialNumber"]' | sed -E -s "s|:||g" )
-		log "getClientSSLProfile() SERIAL: $SERIAL"
+		log "getCurrentCertSerialNumber() SERIAL: $SERIAL"
 		echo $SERIAL
 	  else
 	    log "Cert not found or valid"
