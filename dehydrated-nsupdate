@@ -7,15 +7,10 @@ set -e
 set -u
 set -o pipefail
 
-# pull in conf.d files to get lexicon configuration arguments and provider type
-for i in ${BASEDIR}/conf.d/*.sh ; do
-  . ${i}
-done
-
-NSUPDATE=${NSUPDATE:-'nsupdate'}
-NSUPDATE_ARGS=${NSUPDATE_ARGS:-''}
-NSUPDATE_SERVER_LIST=${NSUPDATE_SERVER_LIST:-''}
-NSUPDATE_RECORD_DEFAULT_TTL=${NSUPDATE_RECORD_DEFAULT_TTL:-'300'}
+# pull in common functions
+. ${BASEDIR}/hooks/dehydrated-bigip-common
+# pull in config
+. ${BASEDIR}/hooks/dehydrated-bigip-loadconfig
 
 function deploy_challenge {
     local DOMAIN="${1}" TOKEN_FILENAME="${2}" TOKEN_VALUE="${3}"

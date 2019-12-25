@@ -1,15 +1,32 @@
 #!/usr/bin/env bash
 
-# pull in conf.d files
-for i in ${BASEDIR}/conf.d/*.sh ; do
-  . ${i}
-done
+# pull in common functions
+. ${BASEDIR}/hooks/dehydrated-bigip-common
+# pull in config
+. ${BASEDIR}/hooks/dehydrated-bigip-loadconfig
 
-REDEPLOY_USING_HOOK='hooks/dehydrated-bigip-deploy-traffic-certificate'
+# dehydrated hooks
 
 unchanged_cert() {
+  echo "entering unchanged_cert()"
   for BIGIP_DEVICE in ${BIGIP_DEVICE_LIST} ; do
-    ${BASEDIR}/${REDEPLOY_USING_HOOK} deploy_cert $@ ${BIGIP_DEVICE}
+	echo "check if ${BIGIP_DEVICE} is Active in cluster";
+	if isActive ; then
+	  echo "Active device, check if cert $@  is installed on ${BIGIP_DEVICE}"
+	  CERTFILE="${3}"
+	  CLIENTSSL_NAME="${1}"
+	  #Use Openssl to check the serial of the local cert, use sed to strip off "serial=" and convert to lowercase
+	  LOCALHASH=$(openssl x509 -in $CERTFILE -serial -noout |sed -E -s 's/serial=//' | tr '[:upper:]' '[:lower:]')
+	  REMOTEHASH=$(getCurrentCertSerialNumber $CLIENTSSL_NAME $BIGIP_PARTITION)
+	  if [ "$LOCALHASH" = "$REMOTEHASH" ]; then
+        echo "Certificate thumprint on F5 matches local one, no redeploy needed"
+	  else
+	    echo "Certificate thumprint not matching, our could not be retreived. Redeploy the certificate..."
+        deploy_traffic_cert $@ ${BIGIP_DEVICE}
+	  fi
+	else
+      echo "Device ${BIGIP_DEVICE} is passive in cluster, skip cert deployment"
+    fi
   done
 }
 
