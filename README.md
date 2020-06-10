@@ -1,5 +1,9 @@
 # README #
 
+# THIS IS NOW A DEFUNCT PROJECT AND WILL NOT BE UPDATED. #
+
+For the next iteration that's based on Ansible (instead of a nightmare of bash) to interact with a BIG-IP system, refer to: https://github.com/EquateTechnologies/dehydrated-bigip-ansible
+
 ## Summary ##
 
 "dehydrated-bigip" is a hook for "[dehydrated](https://github.com/lukas2511/dehydrated)", which is a Let's Encrypt client written entirely in Bash shell.
